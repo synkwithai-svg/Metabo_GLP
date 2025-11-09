@@ -34,12 +34,18 @@ export async function verifyAccessToken(token: string) {
   }
 }
 
-// ✅ Allow null or undefined safely
 export function extractTokenFromHeader(
   authHeader: string | null | undefined
 ): string | null {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader) {
     return null;
   }
-  return authHeader.slice(7);
+
+  // If it's a Bearer token, extract it
+  if (authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  // Otherwise assume it's the raw token from a cookie
+  return authHeader;
 }
