@@ -121,7 +121,6 @@
 //     );
 //   }
 // }
-
 import { type NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -151,7 +150,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { email, password } = validationResult.data;
+    const {
+      email,
+      password,
+      deviceId: providedDeviceId,
+    } = validationResult.data;
 
     // Sign in user with Firebase
     const userCredential = await signInWithEmailAndPassword(
@@ -164,7 +167,7 @@ export async function POST(req: NextRequest) {
     // Get user from Prisma
     const user = await db.user.findUnique({
       where: { id: uid },
-      include: { devices: true }, // fetch associated devices
+      include: { devices: true },
     });
 
     if (!user) {
@@ -175,6 +178,32 @@ export async function POST(req: NextRequest) {
         },
         { status: 404 }
       );
+    }
+
+    let deviceIdToReturn: string | undefined;
+
+    if (providedDeviceId) {
+      const device = await db.device.findUnique({
+        where: { id: providedDeviceId },
+      });
+
+      if (device) {
+        if (device.userId === uid) {
+          // Device belongs to this user, keep it
+          deviceIdToReturn = providedDeviceId;
+        } else {
+          // Device belongs to someone else, delete it
+          await db.device.delete({ where: { id: providedDeviceId } });
+          // fallback to first associated device if exists
+          deviceIdToReturn = user.devices[0]?.id;
+        }
+      } else {
+        // Provided deviceId does not exist in DB, fallback to first associated device
+        deviceIdToReturn = user.devices[0]?.id;
+      }
+    } else {
+      // No deviceId provided, use first associated device
+      deviceIdToReturn = user.devices[0]?.id;
     }
 
     // Store access token
@@ -198,7 +227,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 86400, // 24 hours
+      maxAge: 86400,
       path: "/",
     });
 
@@ -210,10 +239,7 @@ export async function POST(req: NextRequest) {
       role: user.role,
     };
 
-    // Include deviceId if the user has any associated device
-    if (user.devices.length > 0) {
-      response.deviceId = user.devices[0].id; // pick first device for simplicity
-    }
+    if (deviceIdToReturn) response.deviceId = deviceIdToReturn;
 
     return NextResponse.json<AuthResponse<typeof response>>(
       {

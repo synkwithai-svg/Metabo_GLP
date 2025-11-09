@@ -1,6 +1,6 @@
 export interface User {
   id: string;
-  email: string;
+  email: string | null;
   isOnboarded: boolean;
   role: string;
   createdAt: Date;
