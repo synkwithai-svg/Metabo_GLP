@@ -14,19 +14,13 @@ export async function GET(req) {
       );
     }
 
-    // Build query dynamically
-    const query = {};
-    if (userId && deviceId) {
-      query.AND = [{ userId }, { deviceId }];
-    } else if (userId) {
-      query.userId = userId;
-    } else if (deviceId) {
-      query.deviceId = deviceId;
-    }
+    const where = {};
+    if (userId && deviceId) where.AND = [{ userId }, { deviceId }];
+    else if (userId) where.userId = userId;
+    else if (deviceId) where.deviceId = deviceId;
 
-    // Fetch onboarding
     const onboarding = await db.onboarding.findFirst({
-      where: query,
+      where,
       include: {
         user: true,
         device: true,
@@ -40,9 +34,37 @@ export async function GET(req) {
       );
     }
 
-    return NextResponse.json({ success: true, onboarding }, { status: 200 });
+    // ✅ FIX → use id instead of createdAt
+    const injectionShot = await db.injectionShot.findFirst({
+      where: { onboardingId: onboarding.id },
+      orderBy: { id: "desc" },
+    });
+
+    let medication = null;
+    if (injectionShot?.medicationId) {
+      medication = await db.medication.findUnique({
+        where: { id: injectionShot.medicationId },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          onboarding,
+          injectionShot,
+          medication,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Error fetching onboarding details:", error);
+
     return NextResponse.json(
       {
         success: false,
