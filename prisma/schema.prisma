@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-    provider  = "postgresql"
-    url       = env("DATABASE_URL")
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
     directUrl = env("DIRECT_URL")
 }
 
@@ -29,11 +29,13 @@ model User {
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
 
-    onboarding    Onboarding?
-    devices       Device[]
-    accessTokens  AccessToken[]
-    medications   Medication[]
-    injectionLogs InjectionLog[]
+    onboarding     Onboarding?
+    devices        Device[]
+    accessTokens   AccessToken[]
+    medications    Medication[]
+    injectionLogs  InjectionLog[]
+    treatments     Treatment[]
+    injectionShots InjectionShot[]
 
     @@map("users")
 }
@@ -52,14 +54,29 @@ model AccessToken {
 }
 
 model Device {
-    id            String         @id @unique @default(uuid())
-    userId        String?
-    user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-    isOnboarded   Boolean        @default(false)
-    onboarding    Onboarding?
-    createdAt     DateTime       @default(now())
-    updatedAt     DateTime       @updatedAt
-    injectionLogs InjectionLog[]
+    id             String          @id @unique @default(uuid())
+    userId         String?
+    user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+    isOnboarded    Boolean         @default(false)
+    onboarding     Onboarding?
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    injectionLogs  InjectionLog[]
+    treatments     Treatment[]
+    injectionShots InjectionShot[]
+}
+
+model Medication {
+    id             String          @id @default(uuid())
+    name           String
+    userId         String?
+    user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    injectionLogs  InjectionLog[]
+    injectionShots InjectionShot[]
+
+    @@map("medications")
 }
 
 model Onboarding {
@@ -70,14 +87,15 @@ model Onboarding {
     deviceId String? @unique
     device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-    name              String
-    birthday          String
-    gender            Gender
-    glp_medication    String
+    name     String
+    birthday String
+    gender   Gender
+
     glp_medication_on Boolean
-    current_dose      String
-    injection_device  String
-    often_shots       String
+    // glp_medication    String
+    // current_dose      String
+    // injection_device  String
+    // often_shots       String
     height            String
     current_weight    String
     current_goal      String
@@ -88,22 +106,12 @@ model Onboarding {
     protein_goal      String
     motivation        String
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    treatments     Treatment[]
+    injectionShots InjectionShot[]
 
     @@map("onboardings")
-}
-
-model Medication {
-    id            String         @id @default(uuid())
-    name          String
-    userId        String?
-    user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt     DateTime       @default(now())
-    updatedAt     DateTime       @updatedAt
-    injectionLogs InjectionLog[]
-
-    @@map("medications")
 }
 
 model InjectionLog {
@@ -123,8 +131,60 @@ model InjectionLog {
     painLevel Float    @default(0)
     notes     String?
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    createdAt  DateTime    @default(now())
+    updatedAt  DateTime    @updatedAt
+    treatments Treatment[]
 
     @@map("injection_logs")
+}
+
+model Treatment {
+    id     String  @id @default(uuid())
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    lastInjectionId String?
+    lastInjection   InjectionLog? @relation(fields: [lastInjectionId], references: [id], onDelete: SetNull)
+
+    onboardingId String?
+    onboarding   Onboarding? @relation(fields: [onboardingId], references: [id], onDelete: SetNull)
+
+    injectionShotId String?
+    injectionShot   InjectionShot? @relation(fields: [injectionShotId], references: [id], onDelete: SetNull)
+
+    treatmentNotes String[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model InjectionShot {
+    id String @id @default(uuid())
+
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    onboardingId String?
+    onboarding   Onboarding? @relation(fields: [onboardingId], references: [id], onDelete: SetNull)
+
+    medicationId String?
+    medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+    current_dose     String
+    injection_device String
+    often_shots      Int
+
+    Injectionsite String?
+
+    currentStock Float @default(0.00)
+
+    isFirstDose Boolean     @default(true)
+    CreatedAt   DateTime    @default(now())
+    treatments  Treatment[]
 }
