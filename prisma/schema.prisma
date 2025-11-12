@@ -21,9 +21,18 @@ enum Gender {
     OTHER
 }
 
+enum TokenType {
+    ACCESS_TOKEN
+    REFRESH_TOKEN
+}
+
 model User {
     id          String   @id
     email       String?  @unique
+    name        String?
+    birthday    String?
+    gender      Gender?
+    isAnonymous Boolean  @default(true)
     isOnboarded Boolean  @default(false)
     role        Role     @default(USER)
     createdAt   DateTime @default(now())
@@ -31,7 +40,7 @@ model User {
 
     onboarding     Onboarding?
     devices        Device[]
-    accessTokens   AccessToken[]
+    Tokens         Token[]
     medications    Medication[]
     injectionLogs  InjectionLog[]
     treatments     Treatment[]
@@ -40,23 +49,11 @@ model User {
     @@map("users")
 }
 
-model AccessToken {
-    id        String   @id
-    userId    String
-    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-    token     String   @unique
-    expiresAt DateTime
-    createdAt DateTime @default(now())
-    userAgent String?
-    ipAddress String?
-
-    @@map("access_tokens")
-}
-
 model Device {
-    id             String          @id @unique @default(uuid())
+    id             String          @id @unique
     userId         String?
-    user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+    user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+    platform       String?
     isOnboarded    Boolean         @default(false)
     onboarding     Onboarding?
     createdAt      DateTime        @default(now())
@@ -64,6 +61,20 @@ model Device {
     injectionLogs  InjectionLog[]
     treatments     Treatment[]
     injectionShots InjectionShot[]
+}
+
+model Token {
+    id        String    @id
+    userId    String
+    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    token     String    @unique
+    type      TokenType @default(ACCESS_TOKEN)
+    expiresAt DateTime
+    createdAt DateTime  @default(now())
+    userAgent String?
+    ipAddress String?
+
+    @@map("access_tokens")
 }
 
 model Medication {
@@ -87,24 +98,23 @@ model Onboarding {
     deviceId String? @unique
     device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-    name     String
-    birthday String
-    gender   Gender
-
     glp_medication_on Boolean
-    // glp_medication    String
-    // current_dose      String
-    // injection_device  String
-    // often_shots       String
-    height            String
-    current_weight    String
-    current_goal      String
-    weight_goal       String
-    goal_duration     String
-    frustrate_thing   String
-    lifestyle         String
-    protein_goal      String
-    motivation        String
+
+    height_cm Float?
+    height_ft Int?
+    height_in Int?
+
+
+    current_weight_kg Float?
+    current_weight_lb Float?
+    weight_goal_kg    Float?
+    weight_goal_lb    Float?
+
+    goal_duration   String
+    frustrate_thing String
+    lifestyle       String
+    protein_goal    String
+    motivation      String[]
 
     createdAt      DateTime        @default(now())
     updatedAt      DateTime        @updatedAt

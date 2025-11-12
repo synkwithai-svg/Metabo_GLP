@@ -3,22 +3,24 @@ import { db } from "@/lib/db";
 
 export async function GET(req) {
   try {
-    const url = new URL(req.url);
-    const userId = url.searchParams.get("userId");
-    const deviceId = url.searchParams.get("deviceId");
+    // Parse user info from headers set by middleware
+    const userId = req.headers.get("x-user-id");
+    const deviceId = req.headers.get("x-user-deviceid");
 
     if (!userId && !deviceId) {
       return NextResponse.json(
-        { success: false, message: "Either userId or deviceId is required" },
-        { status: 400 }
+        { success: false, message: "Unauthorized: Missing userId or deviceId in headers" },
+        { status: 401 }
       );
     }
 
+    // Build Prisma "where" condition
     const where = {};
     if (userId && deviceId) where.AND = [{ userId }, { deviceId }];
     else if (userId) where.userId = userId;
     else if (deviceId) where.deviceId = deviceId;
 
+    // Fetch onboarding with related user and device
     const onboarding = await db.onboarding.findFirst({
       where,
       include: {
@@ -34,37 +36,30 @@ export async function GET(req) {
       );
     }
 
-    // ✅ FIX → use id instead of createdAt
+    // Fetch latest injection shot
     const injectionShot = await db.injectionShot.findFirst({
       where: { onboardingId: onboarding.id },
-      orderBy: { id: "desc" },
+      orderBy: { id: "desc" }, // use id for latest
     });
 
+    // Fetch medication info
     let medication = null;
     if (injectionShot?.medicationId) {
       medication = await db.medication.findUnique({
         where: { id: injectionShot.medicationId },
-        select: {
-          id: true,
-          name: true,
-        },
+        select: { id: true, name: true },
       });
     }
 
     return NextResponse.json(
       {
         success: true,
-        data: {
-          onboarding,
-          injectionShot,
-          medication,
-        },
+        data: { onboarding, injectionShot, medication },
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error fetching onboarding details:", error);
-
     return NextResponse.json(
       {
         success: false,
@@ -74,4 +69,4 @@ export async function GET(req) {
       { status: 500 }
     );
   }
-}
+};
