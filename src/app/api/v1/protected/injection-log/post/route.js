@@ -60,7 +60,6 @@ export async function POST(req) {
         });
 
         if (injectionShot.isFirstDose) {
-            // First injection: must be done on or after InjectionShot.CreatedAt
             const createdAt = new Date(injectionShot.CreatedAt);
             if (newInjectionDate < createdAt) {
                 return NextResponse.json(
@@ -72,7 +71,6 @@ export async function POST(req) {
                 );
             }
         } else if (latestInjectionLog) {
-            // Subsequent injections: must respect the "often_shots" interval (in days)
             const lastInjectionDate = new Date(latestInjectionLog.date);
             const nextAllowedDate = new Date(
                 lastInjectionDate.getTime() + injectionShot.often_shots * 24 * 60 * 60 * 1000
@@ -119,6 +117,19 @@ export async function POST(req) {
                 notes: notes || null,
             },
         });
+
+        // ✅ Update Treatment's lastInjection
+        const treatment = await db.treatment.findFirst({
+            where: { userId, deviceId, injectionShotId: injectionShot.id },
+            orderBy: { updatedAt: "desc" },
+        });
+
+        if (treatment) {
+            await db.treatment.update({
+                where: { id: treatment.id },
+                data: { lastInjectionId: injectionLog.id },
+            });
+        }
 
         return NextResponse.json({ success: true, injectionLog }, { status: 201 });
     } catch (error) {
