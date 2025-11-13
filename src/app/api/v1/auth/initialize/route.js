@@ -33,7 +33,7 @@ export async function POST(req) {
           message: "Device ID already exists. Device IDs must be unique.",
           data: null,
         },
-        { status: 404 },
+        { status: 400 },
       )
     }
 
