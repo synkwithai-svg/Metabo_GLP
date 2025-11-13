@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 export async function PATCH(req) {
     try {
         const body = await req.json();
+        
+        const userId = req.headers.get("x-user-id");
+        const deviceId = req.headers.get("x-user-deviceid");
 
         const {
-            userId,
-            deviceId,
             current_dose,
             injection_device,
             often_shots,

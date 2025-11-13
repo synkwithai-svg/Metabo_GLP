@@ -3,9 +3,8 @@ import { db } from "@/lib/db";
 
 export async function GET(req) {
     try {
-        const url = new URL(req.url);
-        const userId = url.searchParams.get("userId");
-        const deviceId = url.searchParams.get("deviceId");
+        const userId = req.headers.get("x-user-id");
+        const deviceId = req.headers.get("x-user-deviceid");
 
         if (!userId && !deviceId) {
             return NextResponse.json(
@@ -48,6 +47,9 @@ export async function GET(req) {
                 ],
             },
             orderBy: { CreatedAt: "desc" },
+            include: {
+                medication: true, // ✅ Include medication details
+            },
         });
 
         if (!injectionShot) {
@@ -64,13 +66,11 @@ export async function GET(req) {
             // First dose → next = CreatedAt + often_shots
             nextShotDate = new Date(injectionShot.CreatedAt);
             nextShotDate.setDate(nextShotDate.getDate() + injectionShot.often_shots);
-
             lastDose = null;
         } else {
             // Not first dose → lastInjectionLog + often_shots
             if (treatment.lastInjection) {
                 lastDose = treatment.lastInjection;
-
                 nextShotDate = new Date(treatment.lastInjection.date);
                 nextShotDate.setDate(nextShotDate.getDate() + injectionShot.often_shots);
             } else {
@@ -89,7 +89,8 @@ export async function GET(req) {
                         injection_device: injectionShot.injection_device,
                         current_dose: injectionShot.current_dose,
                         injectionShotId: injectionShot.id,
-                        Injectionsite: injectionShot.Injectionsite ?? null, // ✅ Added field
+                        Injectionsite: injectionShot.Injectionsite ?? null,
+                        medication: injectionShot.medication ?? null, // ✅ Medication details
                     },
                     lastDose,
                     currentStock: injectionShot.currentStock,
@@ -111,3 +112,4 @@ export async function GET(req) {
         );
     }
 }
+

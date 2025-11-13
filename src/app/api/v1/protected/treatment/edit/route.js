@@ -5,7 +5,10 @@ export async function PATCH(req) {
     try {
         const body = await req.json();
 
-        const { userId, deviceId, treatmentNotes } = body;
+        const userId = req.headers.get("x-user-id");
+        const deviceId = req.headers.get("x-user-deviceid");
+
+        const { treatmentNotes } = body;
 
         if (!treatmentNotes || !Array.isArray(treatmentNotes)) {
             return NextResponse.json(

@@ -5,7 +5,7 @@ export async function GET() {
     try {
         // Fetch all medications
         const medications = await db.medication.findMany({
-            orderBy: { createdAt: "desc" }, // optional: newest first
+            orderBy: { createdAt: "desc" }, 
         });
 
         return NextResponse.json({
