@@ -8,7 +8,6 @@ export async function POST(req) {
         const deviceId = req.headers.get("x-user-deviceid");
         const { medicationId, date, dosage, site, painLevel, notes } = body;
 
-        // Validate required fields
         if (!userId || !deviceId) {
             return NextResponse.json(
                 { success: false, message: "userId and deviceId are required" },
@@ -23,35 +22,24 @@ export async function POST(req) {
             );
         }
 
-        // Check if medication exists
         const medication = await db.medication.findUnique({ where: { id: medicationId } });
         if (!medication) {
-            return NextResponse.json(
-                { success: false, message: "Medication not found" },
-                { status: 404 }
-            );
+            return NextResponse.json({ success: false, message: "Medication not found" }, { status: 404 });
         }
 
-        // Ensure user and device exist
         const [user, device] = await Promise.all([
             db.user.findUnique({ where: { id: userId } }),
             db.device.findUnique({ where: { id: deviceId } }),
         ]);
 
-        if (!user) {
-            return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
-        }
+        if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
+        if (!device) return NextResponse.json({ success: false, message: "Device not found" }, { status: 404 });
 
-        if (!device) {
-            return NextResponse.json({ success: false, message: "Device not found" }, { status: 404 });
-        }
-
-        // Link device to user if necessary
         if (device.userId !== userId) {
             await db.device.update({ where: { id: deviceId }, data: { userId } });
         }
 
-        // Find latest injectionShot
+        // Get latest injection shot for this device + medication
         const injectionShot = await db.injectionShot.findFirst({
             where: { medicationId, deviceId },
             orderBy: { CreatedAt: "desc" },
@@ -64,7 +52,44 @@ export async function POST(req) {
             );
         }
 
-        // Check stock
+        // ✅ Timing Validation
+        const newInjectionDate = new Date(date);
+        const latestInjectionLog = await db.injectionLog.findFirst({
+            where: { medicationId, deviceId },
+            orderBy: { date: "desc" },
+        });
+
+        if (injectionShot.isFirstDose) {
+            // First injection: must be done on or after InjectionShot.CreatedAt
+            const createdAt = new Date(injectionShot.CreatedAt);
+            if (newInjectionDate < createdAt) {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        message: `First injection cannot be before the shot creation date (${createdAt.toDateString()}).`,
+                    },
+                    { status: 400 }
+                );
+            }
+        } else if (latestInjectionLog) {
+            // Subsequent injections: must respect the "often_shots" interval (in days)
+            const lastInjectionDate = new Date(latestInjectionLog.date);
+            const nextAllowedDate = new Date(
+                lastInjectionDate.getTime() + injectionShot.often_shots * 24 * 60 * 60 * 1000
+            );
+
+            if (newInjectionDate < nextAllowedDate) {
+                return NextResponse.json(
+                    {
+                        success: false,
+                        message: `Next injection is too early. You can inject only after ${nextAllowedDate.toDateString()}.`,
+                    },
+                    { status: 400 }
+                );
+            }
+        }
+
+        // ✅ Stock Validation
         const doseFloat = Number(dosage);
         const stockFloat = injectionShot.currentStock;
 
@@ -75,19 +100,19 @@ export async function POST(req) {
             );
         }
 
-        // Update stock
+        // Update injection shot (reduce stock)
         await db.injectionShot.update({
             where: { id: injectionShot.id },
             data: { currentStock: stockFloat - doseFloat, isFirstDose: false },
         });
 
-        // Create injection log
+        // Create injection log entry
         const injectionLog = await db.injectionLog.create({
             data: {
                 userId,
                 deviceId,
                 medicationId,
-                date: new Date(date),
+                date: newInjectionDate,
                 dosage,
                 site,
                 painLevel: painLevel || 0,
