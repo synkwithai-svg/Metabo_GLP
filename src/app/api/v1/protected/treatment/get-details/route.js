@@ -25,8 +25,17 @@ export async function GET(req) {
             include: {
                 user: true,
                 device: true,
-                lastInjection: true,
                 onboarding: true,
+                lastInjection: {
+                    include: {
+                        medication: true,
+                    },
+                },
+                injectionShot: {
+                    include: {
+                        medication: true,
+                    },
+                },
             },
         });
 
@@ -37,7 +46,25 @@ export async function GET(req) {
             );
         }
 
-        // Fetch latest injectionShot for this treatment/user/device
+        // 🩸 If treatment.lastInjection is null, fetch manually
+        let lastInjection = treatment.lastInjection;
+
+        if (!lastInjection) {
+            lastInjection = await db.injectionLog.findFirst({
+                where: {
+                    OR: [
+                        { userId: treatment.userId ?? undefined },
+                        { deviceId: treatment.deviceId ?? undefined },
+                    ],
+                },
+                orderBy: { date: "desc" },
+                include: {
+                    medication: true,
+                },
+            });
+        }
+
+        // Fetch latest injection shot for next dose calculation
         const injectionShot = await db.injectionShot.findFirst({
             where: {
                 OR: [
@@ -48,40 +75,36 @@ export async function GET(req) {
             },
             orderBy: { CreatedAt: "desc" },
             include: {
-                medication: true, // ✅ Include medication details
+                medication: true,
             },
         });
 
         if (!injectionShot) {
             return NextResponse.json(
-                { success: true, message: "No injection shot found", data: { treatment } },
+                {
+                    success: true,
+                    message: "No injection shot found",
+                    data: { treatment, lastInjection },
+                },
                 { status: 200 }
             );
         }
 
+        // Calculate next shot date
         let nextShotDate = null;
-        let lastDose = null;
 
         if (injectionShot.isFirstDose) {
-            // First dose → next = CreatedAt + often_shots
             nextShotDate = new Date(injectionShot.CreatedAt);
             nextShotDate.setDate(nextShotDate.getDate() + injectionShot.often_shots);
-            lastDose = null;
-        } else {
-            // Not first dose → lastInjectionLog + often_shots
-            if (treatment.lastInjection) {
-                lastDose = treatment.lastInjection;
-                nextShotDate = new Date(treatment.lastInjection.date);
-                nextShotDate.setDate(nextShotDate.getDate() + injectionShot.often_shots);
-            } else {
-                nextShotDate = null;
-            }
+        } else if (lastInjection) {
+            nextShotDate = new Date(lastInjection.date);
+            nextShotDate.setDate(nextShotDate.getDate() + injectionShot.often_shots);
         }
 
         return NextResponse.json(
             {
                 success: true,
-                message: "Treatment details fetched",
+                message: "Treatment details fetched successfully",
                 data: {
                     nextShot: {
                         nextShotDate,
@@ -90,9 +113,9 @@ export async function GET(req) {
                         current_dose: injectionShot.current_dose,
                         injectionShotId: injectionShot.id,
                         Injectionsite: injectionShot.Injectionsite ?? null,
-                        medication: injectionShot.medication ?? null, // ✅ Medication details
+                        medication: injectionShot.medication ?? null,
                     },
-                    lastDose,
+                    lastDose: lastInjection,
                     currentStock: injectionShot.currentStock,
                     treatment,
                 },
@@ -101,7 +124,6 @@ export async function GET(req) {
         );
     } catch (error) {
         console.error("Error fetching treatment details:", error);
-
         return NextResponse.json(
             {
                 success: false,
@@ -112,4 +134,3 @@ export async function GET(req) {
         );
     }
 }
-
