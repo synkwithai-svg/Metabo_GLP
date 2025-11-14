@@ -1,14 +1,18 @@
+// lib/jwt.js
 import { SignJWT, jwtVerify } from "jose";
 import { db } from "@/lib/db";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
-export async function generateAccessToken(userId, deviceId) {
-  const token = await new SignJWT({
+export async function generateAccessToken(userId, deviceId = null) {
+  const payload = {
     userId,
-    deviceId,
     type: "ACCESS",
-  })
+  };
+
+  if (deviceId) payload.deviceId = deviceId;
+
+  const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${process.env.ACCESS_TOKEN_TIME || "1"}d`)
@@ -35,12 +39,15 @@ export async function generateAccessToken(userId, deviceId) {
   return token;
 }
 
-export async function generateRefreshToken(userId, deviceId) {
-  const token = await new SignJWT({
+export async function generateRefreshToken(userId, deviceId = null) {
+  const payload = {
     userId,
-    deviceId,
     type: "REFRESH",
-  })
+  };
+
+  if (deviceId) payload.deviceId = deviceId;
+
+  const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${process.env.REFRESH_TOKEN_TIME || "7"}d`)
