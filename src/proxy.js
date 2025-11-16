@@ -35,18 +35,26 @@ export async function proxy(request) {
   }
 
   if (!token) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    return new NextResponse(
+      JSON.stringify({ success: false, message: "No token provided" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   // Verify token
   const payload = await verifyToken(token);
 
   if (!payload) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    return new NextResponse(
+      JSON.stringify({ success: false, message: "Invalid token" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   // Fetch user from database
@@ -55,18 +63,25 @@ export async function proxy(request) {
   });
 
   if (!user) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    return new NextResponse(
+      JSON.stringify({ success: false, message: "User not found" }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   // Role-based admin check for /api/v1/protected/admin
   if (pathname.startsWith("/api/v1/protected/admin")) {
     if (user.role !== Role.ADMIN && user.role !== Role.SUPERADMIN) {
-      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new NextResponse(
+        JSON.stringify({ success: false, message: "Forbidden: Insufficient role" }),
+        {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
   }
 
@@ -77,6 +92,9 @@ export async function proxy(request) {
   response.headers.set("x-user-role", user.role);
   response.headers.set("x-user-token", token);
   response.headers.set("x-user-deviceid", payload.deviceId ?? "");
+
+  // You can optionally include success for downstream APIs too
+  response.headers.set("x-auth-success", "true");
 
   return response;
 }
