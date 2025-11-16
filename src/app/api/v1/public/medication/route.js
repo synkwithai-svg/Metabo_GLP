@@ -4,13 +4,13 @@ import { NextResponse } from "next/server";
 export async function GET() {
     try {
         // Fetch all medications
-        const medications = await db.medication.findMany({
+        const data = await db.medication.findMany({
             orderBy: { createdAt: "desc" }, 
         });
 
         return NextResponse.json({
             success: true,
-            medications,
+            data,
         });
     } catch (error) {
         console.error(error);
