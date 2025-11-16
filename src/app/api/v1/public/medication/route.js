@@ -10,6 +10,7 @@ export async function GET() {
 
         return NextResponse.json({
             success: true,
+            message: "Medications fetched successfully",
             data,
         });
     } catch (error) {
