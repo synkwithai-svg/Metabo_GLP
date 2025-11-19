@@ -5,7 +5,7 @@ generator client {
 datasource db {
     provider = "postgresql"
     url      = env("DATABASE_URL")
-    // directUrl = env("DIRECT_URL")
+    directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -25,6 +25,23 @@ enum TokenType {
     ACCESS_TOKEN
     REFRESH_TOKEN
 }
+
+enum MealType {
+    BREAKFAST
+    LUNCH
+    DINNER
+    SNACK
+}
+
+enum FoodSource {
+    MANUAL
+    BARCODE
+    AI_SCAN
+}
+
+/**
+ * ---------------------- USER & AUTH ----------------------
+ */
 
 model User {
     id          String   @id
@@ -49,21 +66,34 @@ model User {
     treatments     Treatment[]
     injectionShots InjectionShot[]
 
+    foods     Food[]
+    meals     Meal[]
+    userFoods UserFood[]
+    quickAdds QuickAdd[]
+    foodLogs  FoodLog[]
+
     @@map("users")
 }
 
 model Device {
-    id             String          @id @unique
-    userId         String?
-    user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-    platform       String?
-    isOnboarded    Boolean         @default(false)
-    onboarding     Onboarding?
-    createdAt      DateTime        @default(now())
-    updatedAt      DateTime        @updatedAt
+    id          String      @id @unique
+    userId      String?
+    user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+    platform    String?
+    isOnboarded Boolean     @default(false)
+    onboarding  Onboarding?
+    createdAt   DateTime    @default(now())
+    updatedAt   DateTime    @updatedAt
+
     injectionLogs  InjectionLog[]
     treatments     Treatment[]
     injectionShots InjectionShot[]
+
+    foods     Food[]
+    meals     Meal[]
+    userFoods UserFood[]
+    quickAdds QuickAdd[]
+    foodLogs  FoodLog[]
 }
 
 model Token {
@@ -79,6 +109,10 @@ model Token {
 
     @@map("access_tokens")
 }
+
+/**
+ * ---------------------- MEDICATIONS ----------------------
+ */
 
 model Medication {
     id             String          @id @default(uuid())
@@ -199,4 +233,208 @@ model InjectionShot {
     isFirstDose Boolean     @default(true)
     CreatedAt   DateTime    @default(now())
     treatments  Treatment[]
+}
+
+/**
+ * ---------------------- FOODS ----------------------
+ */
+
+model Food {
+    id   String @id @default(uuid())
+    name String
+
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    dataPerAmount Float?  @default(100)
+    dataPerUnit   String? @default("g")
+
+    macros    Macro[]       @relation("FoodMacros")
+    mealFoods MealFood[]
+    foodLogs  FoodLogItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("foods")
+}
+
+model UserFood {
+    id   String @id @default(uuid())
+    name String
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    FoodSource FoodSource
+
+    servingSize Float?
+    servingUnit String?
+
+    alternativeServingSizes String[]
+    alternativeServingUnits String[]
+
+    macros    Macro[]       @relation("UserFoodMacros")
+    mealFoods MealFood[]
+    foodLogs  FoodLogItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("user_foods")
+}
+
+model QuickAdd {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    mealType MealType
+    loggedAt DateTime
+
+    macros Macro[] @relation("QuickAddMacros")
+
+    foodLogs FoodLogItem[]
+
+    createdAt DateTime   @default(now())
+    mealFoods MealFood[]
+
+    @@map("quick_adds")
+}
+
+/**
+ * ---------------------- MACROS ----------------------
+ */
+
+model Macro {
+    id String @id @default(uuid())
+
+    energy   Float?
+    calories Float?
+    protein  Float?
+    carbs    Float?
+    fat      Float?
+    fiber    Float?
+
+    foodId String?
+    food   Food?   @relation("FoodMacros", fields: [foodId], references: [id], onDelete: Cascade)
+
+    userFoodId String?
+    userFood   UserFood? @relation("UserFoodMacros", fields: [userFoodId], references: [id], onDelete: Cascade)
+
+    quickAddId String?
+    quickAdd   QuickAdd? @relation("QuickAddMacros", fields: [quickAddId], references: [id], onDelete: Cascade)
+
+    foodLogItemId String?
+    foodLogItem   FoodLogItem? @relation("FoodLogItemMacros", fields: [foodLogItemId], references: [id], onDelete: Cascade)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("macros")
+}
+
+/**
+ * ---------------------- MEALS ----------------------
+ */
+
+model Meal {
+    id   String @id @default(uuid())
+    name String
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    mealType MealType
+
+    foods    MealFood[]
+    foodLogs FoodLogItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("meals")
+}
+
+model MealFood {
+    id     String @id @default(uuid())
+    mealId String
+    meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+    foodId String?
+    food   Food?   @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+    userFoodId String?
+    userFood   UserFood? @relation(fields: [userFoodId], references: [id], onDelete: Cascade)
+
+    quickAddId String?
+    quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id], onDelete: Cascade)
+
+    quantity Float
+
+    @@map("meal_foods")
+}
+
+/**
+ * ---------------------- FOOD LOGGING (FIXED) ----------------------
+ */
+
+model FoodLog {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    mealType MealType
+    loggedAt DateTime @default(now())
+
+    items FoodLogItem[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("food_logs")
+}
+
+model FoodLogItem {
+    id String @id @default(uuid())
+
+    logId String
+    log   FoodLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+    foodId String?
+    food   Food?   @relation(fields: [foodId], references: [id], onDelete: SetNull)
+
+    userFoodId String?
+    userFood   UserFood? @relation(fields: [userFoodId], references: [id], onDelete: SetNull)
+
+    mealId String?
+    meal   Meal?   @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+    quickAddId String?
+    quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id], onDelete: SetNull)
+
+    quantity Float
+    unit     String
+
+    macros Macro[] @relation("FoodLogItemMacros")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("food_log_items")
 }
