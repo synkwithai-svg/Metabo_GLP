@@ -70,9 +70,9 @@ model User {
     quickAdds      QuickAdd[]
     foodLogs       FoodLog[]
     weightlogs     weightlog[]
-    waterLogs      WaterLog[]
     sideEffects    SideEffect[]
     sideEffectLogs SideEffectLog[]
+    waterLogs      WaterLog[]
 
     @@map("users")
 }
@@ -97,10 +97,11 @@ model Device {
     quickAdds  QuickAdd[]
     foodLogs   FoodLog[]
     weightlogs weightlog[]
-    waterLogs  WaterLog[]
 
     sideEffects    SideEffect[]
     sideEffectLogs SideEffectLog[]
+
+    waterLogs WaterLog[]
 }
 
 model Token {
@@ -447,24 +448,32 @@ model FoodLogItem {
 }
 
 model WaterLog {
-    id     String @id @default(uuid())
-    userId String
-    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-    deviceId String?
-    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-
-    date DateTime
-
-    amountInMl Float?
-    amountInOz Float?
-
-    target Int @default(3000)
-
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+    id             String          @id @default(uuid())
+    userId         String
+    user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+    deviceId       String?
+    device         Device?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+    date           DateTime
+    targets        Float[] // targets array 
+    targetInMl     Float?          @default(3000) // optional, total daily goal
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    consumedWaters ConsumedWater[]
 
     @@map("water_logs")
+}
+
+model ConsumedWater {
+    id         String   @id @default(uuid())
+    consumedAt DateTime
+    consumedML Float?
+    consumedOZ Float?
+    waterLogId String
+    waterLog   WaterLog @relation(fields: [waterLogId], references: [id], onDelete: Cascade)
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    @@map("consumed_waters")
 }
 
 model weightlog {
@@ -478,8 +487,6 @@ model weightlog {
     date              DateTime
     current_weight_kg Float?
     current_weight_lb Float?
-    weight_goal_kg    Float?
-    weight_goal_lb    Float?
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
