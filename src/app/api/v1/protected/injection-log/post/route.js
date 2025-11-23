@@ -5,59 +5,82 @@ export async function POST(req) {
     try {
         const body = await req.json();
         const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid");
-        const { medicationId, date, dosage, site, painLevel, notes } = body;
+        const deviceId = req.headers.get("x-user-deviceid"); 
+        const { nextInjectionShotId, medicationId, date, dosage, site, painLevel, notes } = body;
 
-        if (!userId || !deviceId) {
+        if (!userId) {
             return NextResponse.json(
-                { success: false, message: "userId and deviceId are required" },
+                { success: false, message: "userId is required" },
                 { status: 400 }
             );
         }
 
-        if (!medicationId || !date || !dosage || !site) {
-            return NextResponse.json(
-                { success: false, message: "medicationId, date, dosage, and site are required" },
-                { status: 400 }
-            );
-        }
-
-        const medication = await db.medication.findUnique({ where: { id: medicationId } });
-        if (!medication) {
-            return NextResponse.json({ success: false, message: "Medication not found" }, { status: 404 });
-        }
-
-        const [user, device] = await Promise.all([
-            db.user.findUnique({ where: { id: userId } }),
-            db.device.findUnique({ where: { id: deviceId } }),
-        ]);
-
+        const user = await db.user.findUnique({ where: { id: userId } });
         if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
-        if (!device) return NextResponse.json({ success: false, message: "Device not found" }, { status: 404 });
 
-        if (device.userId !== userId) {
-            await db.device.update({ where: { id: deviceId }, data: { userId } });
+        let device = null;
+        if (deviceId) {
+            device = await db.device.findUnique({ where: { id: deviceId } });
+            if (!device) return NextResponse.json({ success: false, message: "Device not found" }, { status: 404 });
+
+            if (device.userId !== userId) {
+                await db.device.update({ where: { id: deviceId }, data: { userId } });
+            }
         }
 
-        // Fetch latest injection shot
+        let injectionData;
+        let nextShot = null;
+
+        if (nextInjectionShotId) {
+            nextShot = await db.nextInjectionShot.findUnique({ where: { id: nextInjectionShotId } });
+            if (!nextShot) {
+                return NextResponse.json({ success: false, message: "NextInjectionShot not found" }, { status: 404 });
+            }
+
+            injectionData = {
+                medicationId: nextShot.medicationId,
+                dosage: nextShot.dose,
+                injection_device: nextShot.injection_device,
+                site: nextShot.Injectionsite,
+            };
+        } else {
+            if (!medicationId || !dosage || !site || !body.injection_device) {
+                return NextResponse.json(
+                    { success: false, message: "medicationId, dosage, injection_device, and site are required" },
+                    { status: 400 }
+                );
+            }
+
+            const medication = await db.medication.findUnique({ where: { id: medicationId } });
+            if (!medication) return NextResponse.json({ success: false, message: "Medication not found" }, { status: 404 });
+
+            injectionData = {
+                medicationId,
+                dosage,
+                injection_device: body.injection_device,
+                site,
+            };
+        }
+
+        // Fetch latest InjectionShot for stock validation
         const injectionShot = await db.injectionShot.findFirst({
-            where: { medicationId, deviceId },
+            where: {
+                medicationId: injectionData.medicationId,
+                ...(deviceId ? { deviceId } : { userId }), 
+            },
             orderBy: { CreatedAt: "desc" },
         });
 
         if (!injectionShot) {
             return NextResponse.json(
-                { success: false, message: "InjectionShot not found for this device" },
+                { success: false, message: "InjectionShot not found" },
                 { status: 404 }
             );
         }
 
-        // ❌ REMOVED all date/timing validation here
-
         // Validate Stock
-        const doseFloat = Number(dosage);
+        const doseFloat = Number(injectionData.dosage);
         const stockFloat = injectionShot.currentStock;
-
         if (stockFloat < doseFloat) {
             return NextResponse.json(
                 { success: false, message: "Not enough stock for this injection" },
@@ -65,21 +88,21 @@ export async function POST(req) {
             );
         }
 
-        // Update injection shot stock
+        // Update InjectionShot stock
         await db.injectionShot.update({
             where: { id: injectionShot.id },
             data: { currentStock: stockFloat - doseFloat, isFirstDose: false },
         });
 
-        // Create injection log
+        // Create InjectionLog
         const injectionLog = await db.injectionLog.create({
             data: {
                 userId,
-                deviceId,
-                medicationId,
+                deviceId: deviceId || null,
+                medicationId: injectionData.medicationId,
                 date: new Date(date),
-                dosage,
-                site,
+                dosage: injectionData.dosage,
+                site: injectionData.site,
                 painLevel: painLevel || 0,
                 notes: notes || null,
             },
@@ -87,7 +110,11 @@ export async function POST(req) {
 
         // Update treatment last injection
         const treatment = await db.treatment.findFirst({
-            where: { userId, deviceId, injectionShotId: injectionShot.id },
+            where: {
+                userId,
+                ...(deviceId ? { deviceId } : {}),
+                injectionShotId: injectionShot.id,
+            },
             orderBy: { updatedAt: "desc" },
         });
 
@@ -95,6 +122,16 @@ export async function POST(req) {
             await db.treatment.update({
                 where: { id: treatment.id },
                 data: { lastInjectionId: injectionLog.id },
+            });
+        }
+
+        // Update NextInjectionShot date if used
+        if (nextShot) {
+            const newDate = new Date(injectionLog.date);
+            newDate.setDate(newDate.getDate() + nextShot.often_shots); // Add often_shots days
+            await db.nextInjectionShot.update({
+                where: { id: nextShot.id },
+                data: { Date: newDate },
             });
         }
 
