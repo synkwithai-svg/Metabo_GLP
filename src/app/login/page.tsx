@@ -1,26 +1,11 @@
 "use client";
 
-import type React from "react";
-
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
-
-interface LoginResponse {
-  success: boolean;
-  message: string;
-  data?: {
-    accessToken: string;
-    refreshToken: string;
-    user: {
-      isAnonymous: boolean;
-      isOnboarded: boolean;
-      role: string;
-      provider: string;
-    };
-  };
-}
+import { useSession } from "next-auth/react";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -29,6 +14,11 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const { data: session, status } = useSession();
+
+  if (session) {
+    window.location.href = "/dashboard";
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,40 +33,29 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+      // Use NextAuth credentials signIn
+      const result = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
       });
 
-      const data: LoginResponse = await response.json();
+      if (!result?.ok) {
+        setError(result?.error || "Login failed. Please try again.");
+      } else {
+        setSuccess(true);
 
-      if (!response.ok) {
-        setError(data.message || "Login failed. Please try again.");
-        return;
-      }
+        // Optional: store session info in localStorage if needed
+        // localStorage.setItem("user", JSON.stringify(result));
 
-      setSuccess(true);
-
-      // Store tokens in localStorage
-      if (data.data) {
-        localStorage.setItem("accessToken", data.data.accessToken);
-        localStorage.setItem("refreshToken", data.data.refreshToken);
-        localStorage.setItem("user", JSON.stringify(data.data.user));
-
-        // Redirect to dashboard after successful login
+        // Redirect to dashboard
         setTimeout(() => {
           window.location.href = "/dashboard";
         }, 1000);
       }
     } catch (err) {
-      setError("An error occurred. Please try again.");
       console.error("Login error:", err);
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
