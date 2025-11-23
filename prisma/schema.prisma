@@ -64,11 +64,15 @@ model User {
     treatments     Treatment[]
     injectionShots InjectionShot[]
 
-    foods     Food[]
-    meals     Meal[]
-    userFoods UserFood[]
-    quickAdds QuickAdd[]
-    foodLogs  FoodLog[]
+    foods          Food[]
+    meals          Meal[]
+    userFoods      UserFood[]
+    quickAdds      QuickAdd[]
+    foodLogs       FoodLog[]
+    weightlogs     weightlog[]
+    waterLogs      WaterLog[]
+    sideEffects    SideEffect[]
+    sideEffectLogs SideEffectLog[]
 
     @@map("users")
 }
@@ -87,11 +91,16 @@ model Device {
     treatments     Treatment[]
     injectionShots InjectionShot[]
 
-    foods     Food[]
-    meals     Meal[]
-    userFoods UserFood[]
-    quickAdds QuickAdd[]
-    foodLogs  FoodLog[]
+    foods      Food[]
+    meals      Meal[]
+    userFoods  UserFood[]
+    quickAdds  QuickAdd[]
+    foodLogs   FoodLog[]
+    weightlogs weightlog[]
+    waterLogs  WaterLog[]
+
+    sideEffects    SideEffect[]
+    sideEffectLogs SideEffectLog[]
 }
 
 model Token {
@@ -435,4 +444,81 @@ model FoodLogItem {
     updatedAt DateTime @updatedAt
 
     @@map("food_log_items")
+}
+
+model WaterLog {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    date DateTime
+
+    amountInMl Float?
+    amountInOz Float?
+
+    target Int @default(3000)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("water_logs")
+}
+
+model weightlog {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    date              DateTime
+    current_weight_kg Float?
+    current_weight_lb Float?
+    weight_goal_kg    Float?
+    weight_goal_lb    Float?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("weight_logs")
+}
+
+model SideEffect {
+    id     String  @id @default(uuid())
+    userId String?
+    user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    name      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    logs SideEffectLog[] @relation("SideEffectToLogs")
+
+    @@map("side_effects")
+}
+
+model SideEffectLog {
+    id String @id @default(uuid())
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    date DateTime
+
+    sideEffects SideEffect[] @relation("SideEffectToLogs")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("side_effect_logs")
 }
