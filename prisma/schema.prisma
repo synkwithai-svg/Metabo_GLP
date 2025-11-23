@@ -454,8 +454,9 @@ model WaterLog {
     deviceId       String?
     device         Device?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
     date           DateTime
-    targets        Float[] // targets array 
-    targetInMl     Float?          @default(3000) // optional, total daily goal
+    targets        Float[]
+    targetInMl     Float?          @default(3000) 
+    totalConsumed  Float           @default(0)
     createdAt      DateTime        @default(now())
     updatedAt      DateTime        @updatedAt
     consumedWaters ConsumedWater[]
