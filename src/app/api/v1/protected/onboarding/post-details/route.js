@@ -11,7 +11,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
-    // Get userId & deviceId from middleware/proxy
+    // Get userId & deviceId from headers
     const userId = req.headers.get("x-user-id") || null;
     const deviceId = req.headers.get("x-user-deviceid") || null;
 
@@ -89,8 +89,8 @@ export async function POST(req) {
 
     // Convert heights
     const heightCm = height_cm ?? (height_ft && height_in ? ftToCm(height_ft) + inToCm(height_in) : height_ft ? ftToCm(height_ft) : height_in ? inToCm(height_in) : null);
-    let heightFt = height_ft ?? (height_cm ? Math.floor(height_cm / 30.48) : null);
-    let heightIn = height_in ?? (height_cm ? Math.round((height_cm / 2.54) % 12) : null);
+    const heightFt = height_ft ?? (height_cm ? Math.floor(height_cm / 30.48) : null);
+    const heightIn = height_in ?? (height_cm ? Math.round((height_cm / 2.54) % 12) : null);
 
     // Fetch user & device
     const user = userId ? await db.user.findUnique({ where: { id: userId } }) : null;
@@ -109,7 +109,7 @@ export async function POST(req) {
       });
     }
 
-    // Upsert Onboarding
+    // Upsert onboarding
     const onboarding = await db.onboarding.upsert({
       where: user?.id ? { userId: user.id } : { deviceId: device?.id },
       update: {
@@ -161,7 +161,23 @@ export async function POST(req) {
       },
     });
 
-    // Fetch Medication info
+    // Calculate next injection date
+    const nextInjectionDate = new Date();
+    nextInjectionDate.setDate(nextInjectionDate.getDate() + (body.often_shots || 0));
+
+    // Create NextInjectionShot
+    const nextInjectionShot = await db.nextInjectionShot.create({
+      data: {
+        userId: user?.id || null,
+        deviceId: device?.id || null,
+        medicationId: body.medicationId,
+        dose: body.current_dose,
+        injection_device: body.injection_device,
+        Date: nextInjectionDate,
+      },
+    });
+
+    // Fetch medication info
     const medication = body.medicationId
       ? await db.medication.findUnique({
         where: { id: body.medicationId },
@@ -188,11 +204,12 @@ export async function POST(req) {
     return NextResponse.json(
       {
         success: true,
-        message: "Onboarding, injection shot & treatment created successfully",
-        data: { onboarding, injectionShot, medication, treatment },
+        message: "Onboarding, injection shot, next injection shot & treatment created successfully",
+        data: { onboarding, injectionShot, nextInjectionShot, medication, treatment },
       },
       { status: 200 }
     );
+
   } catch (error) {
     console.error("Error saving onboarding details:", error);
     return NextResponse.json(
