@@ -64,15 +64,16 @@ model User {
     treatments     Treatment[]
     injectionShots InjectionShot[]
 
-    foods          Food[]
-    meals          Meal[]
-    userFoods      UserFood[]
-    quickAdds      QuickAdd[]
-    foodLogs       FoodLog[]
-    weightlogs     weightlog[]
-    sideEffects    SideEffect[]
-    sideEffectLogs SideEffectLog[]
-    waterLogs      WaterLog[]
+    foods              Food[]
+    meals              Meal[]
+    userFoods          UserFood[]
+    quickAdds          QuickAdd[]
+    foodLogs           FoodLog[]
+    weightlogs         weightlog[]
+    sideEffects        SideEffect[]
+    sideEffectLogs     SideEffectLog[]
+    waterLogs          WaterLog[]
+    nextInjectionShots NextInjectionShot[]
 
     @@map("users")
 }
@@ -101,7 +102,8 @@ model Device {
     sideEffects    SideEffect[]
     sideEffectLogs SideEffectLog[]
 
-    waterLogs WaterLog[]
+    waterLogs          WaterLog[]
+    nextInjectionShots NextInjectionShot[]
 }
 
 model Token {
@@ -123,14 +125,15 @@ model Token {
  */
 
 model Medication {
-    id             String          @id @default(uuid())
-    name           String
-    userId         String?
-    user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
-    createdAt      DateTime        @default(now())
-    updatedAt      DateTime        @updatedAt
-    injectionLogs  InjectionLog[]
-    injectionShots InjectionShot[]
+    id                 String              @id @default(uuid())
+    name               String
+    userId             String?
+    user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt          DateTime            @default(now())
+    updatedAt          DateTime            @updatedAt
+    injectionLogs      InjectionLog[]
+    injectionShots     InjectionShot[]
+    nextInjectionShots NextInjectionShot[]
 
     @@map("medications")
 }
@@ -190,6 +193,31 @@ model InjectionLog {
     treatments Treatment[]
 
     @@map("injection_logs")
+}
+
+model NextInjectionShot {
+    id String @id @default(uuid())
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    medicationId String?
+    medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+    dose             String
+    injection_device String
+
+    Injectionsite String?
+
+    Date DateTime
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("next_injections")
 }
 
 model Treatment {
@@ -447,6 +475,7 @@ model FoodLogItem {
     @@map("food_log_items")
 }
 
+// -------------------Water log -------------------
 model WaterLog {
     id             String          @id @default(uuid())
     userId         String
@@ -455,7 +484,7 @@ model WaterLog {
     device         Device?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
     date           DateTime
     targets        Float[]
-    targetInMl     Float?          @default(3000) 
+    targetInMl     Float?          @default(3000)
     totalConsumed  Float           @default(0)
     createdAt      DateTime        @default(now())
     updatedAt      DateTime        @updatedAt
@@ -477,6 +506,7 @@ model ConsumedWater {
     @@map("consumed_waters")
 }
 
+// -------------------Weight log -------------------
 model weightlog {
     id     String @id @default(uuid())
     userId String
@@ -495,6 +525,7 @@ model weightlog {
     @@map("weight_logs")
 }
 
+// -------------------Side effects -------------------
 model SideEffect {
     id     String  @id @default(uuid())
     userId String?
