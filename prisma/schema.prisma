@@ -75,6 +75,7 @@ model User {
     waterLogs          WaterLog[]
     nextInjectionShots NextInjectionShot[]
     walkingStepsLogs   WalkingStepsLog[]
+    dashboards         Dashboard[]
 
     @@map("users")
 }
@@ -106,6 +107,7 @@ model Device {
     waterLogs          WaterLog[]
     nextInjectionShots NextInjectionShot[]
     walkingStepsLogs   WalkingStepsLog[]
+    dashboards         Dashboard[]
 }
 
 model Token {
@@ -582,4 +584,23 @@ model WalkingStepsLog {
     updatedAt DateTime @updatedAt
 
     @@map("walking_steps_logs")
+}
+
+// ------------------- Dashboard New Fields -------------------
+model Dashboard {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    feeling Int?
+
+    estimatedLevel Float?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("dashboards")
 }
