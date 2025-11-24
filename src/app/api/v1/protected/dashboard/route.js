@@ -56,10 +56,25 @@ export async function GET(req) {
             include: { sideEffects: true },
         });
 
-        // ---------------- WEIGHT LOG ----------------
+        // ---------------- WEIGHT LOG (current weight) ----------------
         const weightLog = await db.weightlog.findFirst({
             where: { userId, date: { gte: startOfDay, lte: endOfDay } },
         });
+
+        // ---------------- GET ONBOARDING (initial + target weights) ----------------
+        const onboarding = await db.onboarding.findFirst({
+            where: { userId },
+        });
+
+        const weight = {
+            initialWeightKg: onboarding?.current_weight_kg ?? null,
+            initialWeightLb: onboarding?.current_weight_lb ?? null,
+            targetWeightKg: onboarding?.weight_goal_kg ?? null,
+            targetWeightLb: onboarding?.weight_goal_lb ?? null,
+            currentWeightKg: weightLog?.current_weight_kg ?? null,
+            currentWeightLb: weightLog?.current_weight_lb ?? null,
+        };
+
 
         // ---------------- NEXT INJECTION SHOT ----------------
         const nextInjectionShot = await db.NextInjectionShot.findFirst({
@@ -80,9 +95,10 @@ export async function GET(req) {
             totalWaterConsumed,
             lastInjection,
             sideEffectLog,
-            weightLog,
+            // weightLog,
+            weight,
             nextInjectionShot,
-            dashboard, // contains feeling & estimatedLevel
+            dashboard,
         });
     } catch (error) {
         console.error(error);
