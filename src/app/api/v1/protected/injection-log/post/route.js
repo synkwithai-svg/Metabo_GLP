@@ -3,10 +3,17 @@ import { db } from "@/lib/db";
 
 export async function POST(req) {
     try {
+        // console.log("=== 🚀 Injection Log API Started ===");
+
         const body = await req.json();
         const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid"); 
-        const { nextInjectionShotId, medicationId, date, dosage, site, painLevel, notes } = body;
+        const deviceId = req.headers.get("x-user-deviceid");
+
+        const { medicationId, date, dosage, site, painLevel, notes } = body;
+
+        // console.log("📌 UserId:", userId);
+        // console.log("📌 DeviceId:", deviceId);
+        // console.log("📌 Received Body:", body);
 
         if (!userId) {
             return NextResponse.json(
@@ -15,100 +22,93 @@ export async function POST(req) {
             );
         }
 
+        // Validate user
         const user = await db.user.findUnique({ where: { id: userId } });
-        if (!user) return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
-
-        let device = null;
-        if (deviceId) {
-            device = await db.device.findUnique({ where: { id: deviceId } });
-            if (!device) return NextResponse.json({ success: false, message: "Device not found" }, { status: 404 });
-
-            if (device.userId !== userId) {
-                await db.device.update({ where: { id: deviceId }, data: { userId } });
-            }
+        if (!user) {
+            // console.log("❌ User not found!");
+            return NextResponse.json({ success: false, message: "User not found" }, { status: 404 });
         }
 
-        let injectionData;
-        let nextShot = null;
-
-        if (nextInjectionShotId) {
-            nextShot = await db.nextInjectionShot.findUnique({ where: { id: nextInjectionShotId } });
-            if (!nextShot) {
-                return NextResponse.json({ success: false, message: "NextInjectionShot not found" }, { status: 404 });
-            }
-
-            injectionData = {
-                medicationId: nextShot.medicationId,
-                dosage: nextShot.dose,
-                injection_device: nextShot.injection_device,
-                site: nextShot.Injectionsite,
-            };
-        } else {
-            if (!medicationId || !dosage || !site || !body.injection_device) {
-                return NextResponse.json(
-                    { success: false, message: "medicationId, dosage, injection_device, and site are required" },
-                    { status: 400 }
-                );
-            }
-
-            const medication = await db.medication.findUnique({ where: { id: medicationId } });
-            if (!medication) return NextResponse.json({ success: false, message: "Medication not found" }, { status: 404 });
-
-            injectionData = {
-                medicationId,
-                dosage,
-                injection_device: body.injection_device,
-                site,
-            };
+        // Validate medication
+        const medication = await db.medication.findUnique({ where: { id: medicationId } });
+        if (!medication) {
+            // console.log("❌ Medication not found!");
+            return NextResponse.json(
+                { success: false, message: "Medication not found" },
+                { status: 404 }
+            );
         }
 
-        // Fetch latest InjectionShot for stock validation
+        // Validate injection data
+        if (!medicationId || !dosage || !site || !body.injection_device) {
+            // console.log("❌ Missing required fields!");
+            return NextResponse.json(
+                { success: false, message: "medicationId, dosage, injection_device, and site are required" },
+                { status: 400 }
+            );
+        }
+
+        // Fetch latest injection shot (for stock + often_shots)
         const injectionShot = await db.injectionShot.findFirst({
             where: {
-                medicationId: injectionData.medicationId,
-                ...(deviceId ? { deviceId } : { userId }), 
+                medicationId,
+                ...(deviceId ? { deviceId } : { userId }),
             },
             orderBy: { CreatedAt: "desc" },
         });
 
         if (!injectionShot) {
+            // console.log("❌ No InjectionShot found for user/device!");
             return NextResponse.json(
                 { success: false, message: "InjectionShot not found" },
                 { status: 404 }
             );
         }
 
-        // Validate Stock
-        const doseFloat = Number(injectionData.dosage);
+        // console.log("📦 InjectionShot:", injectionShot);
+
+        // Validate stock
+        const doseFloat = Number(dosage);
         const stockFloat = injectionShot.currentStock;
+
+        // console.log("📌 Stock check: Current =", stockFloat, " Required =", doseFloat);
+
         if (stockFloat < doseFloat) {
+            // console.log("❌ Not enough stock!");
             return NextResponse.json(
                 { success: false, message: "Not enough stock for this injection" },
                 { status: 400 }
             );
         }
 
-        // Update InjectionShot stock
+        // Update stock
         await db.injectionShot.update({
             where: { id: injectionShot.id },
-            data: { currentStock: stockFloat - doseFloat, isFirstDose: false },
+            data: {
+                currentStock: stockFloat - doseFloat,
+                isFirstDose: false,
+            },
         });
 
-        // Create InjectionLog
+        // console.log("✔️ Stock updated!");
+
+        // Create injection log
         const injectionLog = await db.injectionLog.create({
             data: {
                 userId,
                 deviceId: deviceId || null,
-                medicationId: injectionData.medicationId,
+                medicationId,
                 date: new Date(date),
-                dosage: injectionData.dosage,
-                site: injectionData.site,
+                dosage,
+                site,
                 painLevel: painLevel || 0,
                 notes: notes || null,
             },
         });
 
-        // Update treatment last injection
+        // console.log("📝 Injection Log Created:", injectionLog);
+
+        // Update latest treatment record
         const treatment = await db.treatment.findFirst({
             where: {
                 userId,
@@ -123,22 +123,48 @@ export async function POST(req) {
                 where: { id: treatment.id },
                 data: { lastInjectionId: injectionLog.id },
             });
+            // console.log("✔️ Treatment updated with last injection");
         }
 
-        // Update NextInjectionShot date if used
+        // console.log("➡ Fetching NextInjectionShot automatically...");
+
+        // Auto-fetch the next injection shot
+        const nextShot = await db.nextInjectionShot.findFirst({
+            where: {
+                userId,
+                medicationId,
+                ...(deviceId ? { deviceId } : {}),
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        // console.log("📌 Found nextShot:", nextShot ? nextShot.id : "None");
+
         if (nextShot) {
+            // console.log("📌 often_shots:", injectionShot.often_shots);
+            // console.log("📌 Injection Log Date:", injectionLog.date);
+
             const newDate = new Date(injectionLog.date);
-            newDate.setDate(newDate.getDate() + nextShot.often_shots); // Add often_shots days
+            newDate.setDate(newDate.getDate() + injectionShot.often_shots);
+
+            // console.log("📅 Calculated Next Injection Date:", newDate);
+
             await db.nextInjectionShot.update({
                 where: { id: nextShot.id },
                 data: { Date: newDate },
             });
+
+            // console.log("✔️ NextInjectionShot updated!");
+        } else {
+            // console.log("⚠️ No existing nextShot found → Skipping update.");
         }
+
+        // console.log("=== ✅ Injection Log Process Completed ===");
 
         return NextResponse.json({ success: true, injectionLog }, { status: 201 });
 
     } catch (error) {
-        console.error("Error creating injection log:", error);
+        console.error("❌ Error creating injection log:", error);
         return NextResponse.json(
             { success: false, message: "Error creating injection log", error: error.message },
             { status: 500 }

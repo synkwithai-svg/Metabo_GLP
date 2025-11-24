@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 export async function PATCH(req) {
     try {
         const body = await req.json();
-        
+
         const userId = req.headers.get("x-user-id");
         const deviceId = req.headers.get("x-user-deviceid");
 
@@ -42,7 +42,7 @@ export async function PATCH(req) {
             );
         }
 
-        // Update fields
+        // Update injectionShot
         const updatedInjectionShot = await db.injectionShot.update({
             where: { id: injectionShot.id },
             data: {
@@ -54,6 +54,26 @@ export async function PATCH(req) {
                 isFirstDose: isFirstDose ?? injectionShot.isFirstDose,
             },
         });
+
+        // If Injectionsite is provided, update the latest NextInjectionShot as well
+        if (Injectionsite) {
+            const nextInjectionShot = await db.nextInjectionShot.findFirst({
+                where: {
+                    userId,
+                    deviceId,
+                },
+                orderBy: { Date: "asc" }, // assuming the earliest upcoming injection
+            });
+
+            if (nextInjectionShot) {
+                await db.nextInjectionShot.update({
+                    where: { id: nextInjectionShot.id },
+                    data: {
+                        Injectionsite,
+                    },
+                });
+            }
+        }
 
         return NextResponse.json(
             {
