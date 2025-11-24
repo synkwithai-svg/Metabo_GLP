@@ -68,6 +68,12 @@ export async function GET(req) {
             include: { medication: true, device: true },
         });
 
+        // ---------------- DASHBOARD FEELINGS ----------------
+        const dashboard = await db.dashboard.findFirst({
+            where: { userId, createdAt: { gte: startOfDay, lte: endOfDay } },
+            orderBy: { createdAt: "desc" },
+        });
+
         return NextResponse.json({
             date: queryDate.format("YYYY-MM-DD"),
             totalMacros,
@@ -76,6 +82,7 @@ export async function GET(req) {
             sideEffectLog,
             weightLog,
             nextInjectionShot,
+            dashboard, // contains feeling & estimatedLevel
         });
     } catch (error) {
         console.error(error);
