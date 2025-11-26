@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { startOfDay, subDays } from "date-fns";
+import calculateBMI from "@/utils/calculate-bmi";
 
 export async function GET(req) {
     try {
@@ -14,6 +14,33 @@ export async function GET(req) {
             );
         }
 
+        const { searchParams } = new URL(req.url);
+        const queryDate = searchParams.get("date");
+
+        // Parse selected date as UTC
+        let selectedDate;
+        if (queryDate) {
+            const utcDateString = queryDate.includes('T') ? queryDate : `${queryDate}T00:00:00.000Z`;
+            selectedDate = new Date(utcDateString);
+        } else {
+            selectedDate = new Date();
+        }
+
+        // Get start and end of selected date in UTC
+        const selectedDateStart = new Date(Date.UTC(
+            selectedDate.getUTCFullYear(),
+            selectedDate.getUTCMonth(),
+            selectedDate.getUTCDate(),
+            0, 0, 0, 0
+        ));
+
+        const selectedDateEnd = new Date(Date.UTC(
+            selectedDate.getUTCFullYear(),
+            selectedDate.getUTCMonth(),
+            selectedDate.getUTCDate(),
+            23, 59, 59, 999
+        ));
+
         // -------------------------------
         // GET ONBOARDING (starting data)
         // -------------------------------
@@ -23,6 +50,7 @@ export async function GET(req) {
                 createdAt: true,
                 current_weight_kg: true,
                 weight_goal_kg: true,
+                goal_duration: true,
                 height_cm: true,
                 height_ft: true,
                 height_in: true,
@@ -38,12 +66,18 @@ export async function GET(req) {
         }
 
         const {
+            createdAt: onboardingDate,
             current_weight_kg: initialWeightKg,
             weight_goal_kg,
+            goal_duration,
             height_cm,
             height_ft,
             height_in,
         } = onboarding;
+
+        // Calculate goal date (onboarding date + goal_duration days)
+        const goalDate = new Date(onboardingDate);
+        goalDate.setDate(goalDate.getDate() + parseInt(goal_duration || 0));
 
         // -------------------------------
         // GET LATEST HEIGHT (Height model)
@@ -64,15 +98,18 @@ export async function GET(req) {
                     : null);
 
         // -------------------------------
-        // GET LATEST WEIGHT
+        // GET LATEST WEIGHT UP TO SELECTED DATE
         // -------------------------------
         const latestWeightLog = await db.weightlog.findFirst({
-            where: { userId, ...(deviceId ? { deviceId } : {}) },
+            where: {
+                userId,
+                ...(deviceId ? { deviceId } : {}),
+                date: { lte: selectedDateEnd }
+            },
             orderBy: { date: "desc" },
         });
 
-        const currentWeightKg =
-            latestWeightLog?.current_weight_kg || initialWeightKg;
+        const currentWeightKg = latestWeightLog?.current_weight_kg || initialWeightKg;
 
         // -------------------------------
         // PROGRESS %
@@ -83,62 +120,93 @@ export async function GET(req) {
                     100,
                     Math.max(
                         0,
-                        ((currentWeightKg - initialWeightKg) /
-                            (weight_goal_kg - initialWeightKg)) *
+                        ((initialWeightKg - currentWeightKg) /
+                            (initialWeightKg - weight_goal_kg)) *
                         100
                     )
                 )
                 : 0;
 
         // -------------------------------
-        // BMI CALCULATION
+        // BMI CALCULATION using imported function
         // -------------------------------
-        const calculateBMI = (weight, height) => {
-            if (!weight || !height) return null;
-            const hMeters = height / 100;
-            return Number((weight / (hMeters * hMeters)).toFixed(1));
-        };
-
         const bmi = calculateBMI(currentWeightKg, heightCm);
         const initialBmi = calculateBMI(initialWeightKg, heightCm);
 
-        const getBmiCategory = (b) => {
-            if (!b) return "Unknown";
-            if (b < 18.5) return "Underweight";
-            if (b < 25) return "Normal weight";
-            if (b < 30) return "Overweight";
-            return "Obesity";
+        // -------------------------------
+        // TIMELINE
+        // -------------------------------
+        const timeline = {
+            initialDate: onboardingDate.toISOString().split("T")[0],
+            initialWeight: initialWeightKg,
+            goalDate: goalDate.toISOString().split("T")[0],
+            goalWeight: weight_goal_kg,
+            currentWeight: currentWeightKg,
         };
-
-        const bmiCategory = getBmiCategory(bmi);
 
         // -------------------------------
         // CHART DATA HELPER
         // -------------------------------
         const getLogsForDays = async (days) => {
-            const start = startOfDay(subDays(new Date(), days - 1));
-            const end = new Date();
+            // Calculate onboarding date start in UTC
+            const onboardingDateStart = new Date(Date.UTC(
+                onboardingDate.getUTCFullYear(),
+                onboardingDate.getUTCMonth(),
+                onboardingDate.getUTCDate(),
+                0, 0, 0, 0
+            ));
+
+            // Calculate days since onboarding
+            const daysSinceOnboarding = Math.floor(
+                (selectedDateStart.getTime() - onboardingDateStart.getTime()) / (1000 * 60 * 60 * 24)
+            );
+
+            // If user hasn't completed the requested period, use actual days since onboarding
+            const actualDays = Math.min(days, daysSinceOnboarding + 1);
+
+            // Start date for chart (either X days ago or onboarding date, whichever is later)
+            const chartStartDate = new Date(Date.UTC(
+                selectedDateStart.getUTCFullYear(),
+                selectedDateStart.getUTCMonth(),
+                selectedDateStart.getUTCDate() - (actualDays - 1),
+                0, 0, 0, 0
+            ));
+
+            // Don't go before onboarding date
+            const finalStartDate = chartStartDate < onboardingDateStart
+                ? onboardingDateStart
+                : chartStartDate;
 
             const logs = await db.weightlog.findMany({
                 where: {
                     userId,
                     ...(deviceId ? { deviceId } : {}),
-                    date: { gte: start, lte: end },
+                    date: { gte: finalStartDate, lte: selectedDateEnd },
                 },
                 orderBy: { date: "asc" },
             });
 
             const chartData = [];
 
-            for (let i = 0; i < days; i++) {
-                const day = startOfDay(subDays(new Date(), days - i - 1));
+            // Calculate actual number of days to display
+            const totalDays = Math.floor(
+                (selectedDateEnd.getTime() - finalStartDate.getTime()) / (1000 * 60 * 60 * 24)
+            ) + 1;
+
+            for (let i = 0; i < totalDays; i++) {
+                const day = new Date(Date.UTC(
+                    finalStartDate.getUTCFullYear(),
+                    finalStartDate.getUTCMonth(),
+                    finalStartDate.getUTCDate() + i,
+                    0, 0, 0, 0
+                ));
 
                 const logForDay = logs.find((l) => {
-                    const d = new Date(l.date);
+                    const logDate = new Date(l.date);
                     return (
-                        d.getUTCFullYear() === day.getUTCFullYear() &&
-                        d.getUTCMonth() === day.getUTCMonth() &&
-                        d.getUTCDate() === day.getUTCDate()
+                        logDate.getUTCFullYear() === day.getUTCFullYear() &&
+                        logDate.getUTCMonth() === day.getUTCMonth() &&
+                        logDate.getUTCDate() === day.getUTCDate()
                     );
                 });
 
@@ -168,14 +236,15 @@ export async function GET(req) {
                     initial: initialWeightKg,
                     current: currentWeightKg,
                     goal: weight_goal_kg,
-                    progressPercent,
+                    progressPercent: parseFloat(progressPercent.toFixed(2)),
                 },
                 bmi: {
                     height_cm: heightCm,
-                    current: bmi,
-                    initial: initialBmi,
-                    category: bmiCategory,
+                    current: bmi.index,
+                    initial: initialBmi.index,
+                    category: bmi.category,
                 },
+                timeline,
                 chart: {
                     "7d": chart7d,
                     "30d": chart30d,
