@@ -227,66 +227,89 @@ export async function GET(req) {
         const chart90d = await getLogsForDays(90);
 
         // -------------------------------
-        // JOURNEY - 2 CONSECUTIVE LATEST ENTRIES
+        // JOURNEY - ONLY IF PHOTOS EXIST
         // -------------------------------
-        // Fetch all photos
-        const photos = await db.photo.findMany({
-            where: { userId, ...(deviceId ? { deviceId } : {}) },
-            orderBy: { createdAt: "asc" },
+        let journeyData = [];
+
+        // Check if photos exist first
+        const photoCount = await db.photo.count({
+            where: { userId, ...(deviceId ? { deviceId } : {}) }
         });
 
-        // Fetch all heights
-        const heights = await db.height.findMany({
-            where: { userId, ...(deviceId ? { deviceId } : {}) },
-            orderBy: { createdAt: "asc" },
-        });
-
-        // Fetch all weights for journey
-        const journeyWeights = await db.weightlog.findMany({
-            where: { userId, ...(deviceId ? { deviceId } : {}) },
-            orderBy: { createdAt: "asc" },
-        });
-
-        // Combine all entries by date
-        const combined = {};
-
-        const addToCombined = (date, type, data) => {
-            if (!combined[date]) combined[date] = { date, photos: [], heights: [], weights: [] };
-            combined[date][type].push(data);
-        };
-
-        photos.forEach(photo => {
-            const date = photo.createdAt.toISOString().split("T")[0];
-            addToCombined(date, "photos", {
-                id: photo.id,
-                photoUrl: photo.photoUrl,
-                note: photo.note || null
+        if (photoCount > 0) {
+            // Fetch all photos
+            const photos = await db.photo.findMany({
+                where: { userId, ...(deviceId ? { deviceId } : {}) },
+                orderBy: { createdAt: "desc" },
+                take: 2, // Only get latest 2 photos
             });
-        });
 
-        heights.forEach(height => {
-            const date = height.createdAt.toISOString().split("T")[0];
-            addToCombined(date, "heights", {
-                id: height.id,
-                height_cm: height.height_cm,
-                height_ft: height.height_ft,
-                height_in: height.height_in
-            });
-        });
+            // For each photo, get weight and height from the same date
+            journeyData = await Promise.all(photos.map(async (photo) => {
+                const photoDate = photo.createdAt.toISOString().split("T")[0];
 
-        journeyWeights.forEach(weight => {
-            const date = weight.createdAt.toISOString().split("T")[0];
-            addToCombined(date, "weights", {
-                id: weight.id,
-                current_weight_kg: weight.current_weight_kg,
-                current_weight_lb: weight.current_weight_lb
-            });
-        });
+                // Get start and end of photo date in UTC
+                const photoDateStart = new Date(Date.UTC(
+                    photo.createdAt.getUTCFullYear(),
+                    photo.createdAt.getUTCMonth(),
+                    photo.createdAt.getUTCDate(),
+                    0, 0, 0, 0
+                ));
 
-        // Convert combined object to array sorted by date descending and get latest 2
-        const journeyData = Object.values(combined)
-            .sort((a, b) => b.date.localeCompare(a.date))
-            .slice(0, 2);
+                const photoDateEnd = new Date(Date.UTC(
+                    photo.createdAt.getUTCFullYear(),
+                    photo.createdAt.getUTCMonth(),
+                    photo.createdAt.getUTCDate(),
+                    23, 59, 59, 999
+                ));
+
+                // Get weight from the same date
+                const weight = await db.weightlog.findFirst({
+                    where: {
+                        userId,
+                        ...(deviceId ? { deviceId } : {}),
+                        createdAt: {
+                            gte: photoDateStart,
+                            lte: photoDateEnd
+                        }
+                    },
+                    orderBy: { createdAt: "desc" }
+                });
+
+                // Get height from the same date
+                const height = await db.height.findFirst({
+                    where: {
+                        userId,
+                        ...(deviceId ? { deviceId } : {}),
+                        createdAt: {
+                            gte: photoDateStart,
+                            lte: photoDateEnd
+                        }
+                    },
+                    orderBy: { createdAt: "desc" }
+                });
+
+                return {
+                    date: photoDate,
+                    photos: [{
+                        id: photo.id,
+                        photoUrl: photo.photoUrl,
+                        note: photo.note || null
+                    }],
+                    weights: weight ? [{
+                        id: weight.id,
+                        current_weight_kg: weight.current_weight_kg,
+                        current_weight_lb: weight.current_weight_lb
+                    }] : [],
+                    heights: height ? [{
+                        id: height.id,
+                        height_cm: height.height_cm,
+                        height_ft: height.height_ft,
+                        height_in: height.height_in
+                    }] : []
+                };
+            }));
+        }
 
         // -------------------------------
         // FINAL RESPONSE
