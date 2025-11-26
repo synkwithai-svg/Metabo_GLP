@@ -76,6 +76,8 @@ model User {
     nextInjectionShots NextInjectionShot[]
     walkingStepsLogs   WalkingStepsLog[]
     dashboards         Dashboard[]
+    heights            Height[]
+    photos             Photo[]
 
     @@map("users")
 }
@@ -108,6 +110,8 @@ model Device {
     nextInjectionShots NextInjectionShot[]
     walkingStepsLogs   WalkingStepsLog[]
     dashboards         Dashboard[]
+    heights            Height[]
+    photos             Photo[]
 }
 
 model Token {
@@ -603,4 +607,40 @@ model Dashboard {
     updatedAt DateTime @updatedAt
 
     @@map("dashboards")
+}
+
+model Height {
+    id     String @id @default(uuid())
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    height_cm Float?
+    height_ft Int?
+    height_in Int?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("heights")
+}
+
+model Photo {
+    id String @id @default(uuid())
+
+    userId String
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    deviceId String?
+    device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+    photoUrl String
+
+    note      String?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("photos")
 }
