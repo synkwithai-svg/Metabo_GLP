@@ -227,6 +227,68 @@ export async function GET(req) {
         const chart90d = await getLogsForDays(90);
 
         // -------------------------------
+        // JOURNEY - 2 CONSECUTIVE LATEST ENTRIES
+        // -------------------------------
+        // Fetch all photos
+        const photos = await db.photo.findMany({
+            where: { userId, ...(deviceId ? { deviceId } : {}) },
+            orderBy: { createdAt: "asc" },
+        });
+
+        // Fetch all heights
+        const heights = await db.height.findMany({
+            where: { userId, ...(deviceId ? { deviceId } : {}) },
+            orderBy: { createdAt: "asc" },
+        });
+
+        // Fetch all weights for journey
+        const journeyWeights = await db.weightlog.findMany({
+            where: { userId, ...(deviceId ? { deviceId } : {}) },
+            orderBy: { createdAt: "asc" },
+        });
+
+        // Combine all entries by date
+        const combined = {};
+
+        const addToCombined = (date, type, data) => {
+            if (!combined[date]) combined[date] = { date, photos: [], heights: [], weights: [] };
+            combined[date][type].push(data);
+        };
+
+        photos.forEach(photo => {
+            const date = photo.createdAt.toISOString().split("T")[0];
+            addToCombined(date, "photos", {
+                id: photo.id,
+                photoUrl: photo.photoUrl,
+                note: photo.note || null
+            });
+        });
+
+        heights.forEach(height => {
+            const date = height.createdAt.toISOString().split("T")[0];
+            addToCombined(date, "heights", {
+                id: height.id,
+                height_cm: height.height_cm,
+                height_ft: height.height_ft,
+                height_in: height.height_in
+            });
+        });
+
+        journeyWeights.forEach(weight => {
+            const date = weight.createdAt.toISOString().split("T")[0];
+            addToCombined(date, "weights", {
+                id: weight.id,
+                current_weight_kg: weight.current_weight_kg,
+                current_weight_lb: weight.current_weight_lb
+            });
+        });
+
+        // Convert combined object to array sorted by date descending and get latest 2
+        const journeyData = Object.values(combined)
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .slice(0, 2);
+
+        // -------------------------------
         // FINAL RESPONSE
         // -------------------------------
         return NextResponse.json(
@@ -245,6 +307,7 @@ export async function GET(req) {
                     category: bmi.category,
                 },
                 timeline,
+                journey: journeyData,
                 chart: {
                     "7d": chart7d,
                     "30d": chart30d,
