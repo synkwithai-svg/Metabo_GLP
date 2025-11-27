@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/token";
 import { db } from "@/lib/db";
 
-
 export async function POST(req) {
   try {
-    // 1️⃣ Get Authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json(
@@ -16,7 +14,6 @@ export async function POST(req) {
 
     const token = authHeader.split(" ")[1];
 
-    // 2️⃣ Verify token
     const decoded = await verifyToken(token);
     if (!decoded) {
       return NextResponse.json(
@@ -27,12 +24,16 @@ export async function POST(req) {
 
     const { userId } = decoded;
 
-    // 3️⃣ Delete all tokens for the user
+    // Delete only normal access/refresh tokens
     await db.token.deleteMany({
-      where: { userId },
+      where: {
+        userId,
+        type: {
+          in: ["ACCESS_TOKEN", "REFRESH_TOKEN"],
+        },
+      },
     });
 
-    // 4️⃣ Return success
     return NextResponse.json(
       {
         success: true,
