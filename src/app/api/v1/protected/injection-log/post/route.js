@@ -40,10 +40,10 @@ export async function POST(req) {
         }
 
         // Validate injection data
-        if (!medicationId || !dosage || !site || !body.injection_device) {
+        if (!medicationId || !dosage || !site ) {
             // console.log("❌ Missing required fields!");
             return NextResponse.json(
-                { success: false, message: "medicationId, dosage, injection_device, and site are required" },
+                { success: false, message: "medicationId, dosage, and site are required" },
                 { status: 400 }
             );
         }
