@@ -6,573 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id                 String              @id
-  email              String?             @unique
-  name               String?
-  birthday           String?
-  gender             Gender?
-  isAnonymous        Boolean             @default(true)
-  isOnboarded        Boolean             @default(false)
-  role               Role                @default(USER)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  provider           String?
-  providerUid        String?
-  devices            Device[]
-  injectionShots     InjectionShot[]
-  permissions        Permission[]
-  treatments         Treatment[]
-  Tokens             Token[]
-  dashboards         Dashboard[]
-  members            Family[]
-  invitations        Invitation[]
-  pairingCodes       PairingCode[]
-  foodLogs           FoodLog[]
-  foods              Food[]
-  heights            Height[]
-  injectionLogs      InjectionLog[]
-  meals              Meal[]
-  medications        Medication[]
-  nextInjectionShots NextInjectionShot[]
-  onboarding         Onboarding?
-  photos             Photo[]
-  quickAdds          QuickAdd[]
-  sideEffectLogs     SideEffectLog[]
-  sideEffects        SideEffect[]
-  userFoods          UserFood[]
-  walkingStepsLogs   WalkingStepsLog[]
-  waterLogs          WaterLog[]
-  weightlogs         weightlog[]
-
-  @@map("users")
-}
-
-model Device {
-  id                 String              @id @unique
-  userId             String?
-  platform           String?
-  isOnboarded        Boolean             @default(false)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  user               User?               @relation(fields: [userId], references: [id])
-  injectionShots     InjectionShot[]
-  treatments         Treatment[]
-  dashboards         Dashboard[]
-  families           Family[]
-  foodLogs           FoodLog[]
-  foods              Food[]
-  heights            Height[]
-  injectionLogs      InjectionLog[]
-  meals              Meal[]
-  nextInjectionShots NextInjectionShot[]
-  onboarding         Onboarding?
-  photos             Photo[]
-  quickAdds          QuickAdd[]
-  sideEffectLogs     SideEffectLog[]
-  sideEffects        SideEffect[]
-  userFoods          UserFood[]
-  walkingStepsLogs   WalkingStepsLog[]
-  waterLogs          WaterLog[]
-  weightlogs         weightlog[]
-}
-
-model Token {
-  id        String    @id
-  userId    String
-  token     String    @unique
-  type      TokenType @default(ACCESS_TOKEN)
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
-  userAgent String?
-  ipAddress String?
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("access_tokens")
-}
-
-model Medication {
-  id                 String              @id @default(uuid())
-  name               String
-  userId             String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  injectionShots     InjectionShot[]
-  injectionLogs      InjectionLog[]
-  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  nextInjectionShots NextInjectionShot[]
-
-  @@map("medications")
-}
-
-model Onboarding {
-  id                String          @id @default(uuid())
-  userId            String?         @unique
-  deviceId          String?         @unique
-  glp_medication_on Boolean
-  height_cm         Float?
-  height_ft         Int?
-  height_in         Int?
-  current_weight_kg Float?
-  current_weight_lb Float?
-  weight_goal_kg    Float?
-  weight_goal_lb    Float?
-  goal_duration     String
-  frustrate_thing   String
-  lifestyle         String
-  protein_goal      String
-  motivation        String[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  injectionShots    InjectionShot[]
-  treatments        Treatment[]
-  device            Device?         @relation(fields: [deviceId], references: [id])
-  user              User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("onboardings")
-}
-
-model InjectionLog {
-  id           String      @id @default(uuid())
-  userId       String?
-  medicationId String?
-  deviceId     String?
-  date         DateTime
-  dosage       String
-  site         String
-  painLevel    Float       @default(0)
-  notes        String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  treatments   Treatment[]
-  device       Device?     @relation(fields: [deviceId], references: [id])
-  medication   Medication? @relation(fields: [medicationId], references: [id])
-  user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("injection_logs")
-}
-
-model NextInjectionShot {
-  id               String      @id @default(uuid())
-  userId           String
-  deviceId         String?
-  medicationId     String?
-  dose             String
-  injection_device String
-  Injectionsite    String?
-  Date             DateTime
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  device           Device?     @relation(fields: [deviceId], references: [id])
-  medication       Medication? @relation(fields: [medicationId], references: [id])
-  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("next_injections")
-}
-
-model Treatment {
-  id              String         @id @default(uuid())
-  userId          String?
-  deviceId        String?
-  lastInjectionId String?
-  onboardingId    String?
-  injectionShotId String?
-  treatmentNotes  String[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  device          Device?        @relation(fields: [deviceId], references: [id])
-  injectionShot   InjectionShot? @relation(fields: [injectionShotId], references: [id])
-  lastInjection   InjectionLog?  @relation(fields: [lastInjectionId], references: [id])
-  onboarding      Onboarding?    @relation(fields: [onboardingId], references: [id])
-  user            User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model InjectionShot {
-  id               String      @id @default(uuid())
-  userId           String?
-  deviceId         String?
-  onboardingId     String?
-  medicationId     String?
-  current_dose     String
-  injection_device String
-  often_shots      Int
-  Injectionsite    String?
-  currentStock     Float       @default(0.00)
-  isFirstDose      Boolean     @default(true)
-  CreatedAt        DateTime    @default(now())
-  device           Device?     @relation(fields: [deviceId], references: [id])
-  medication       Medication? @relation(fields: [medicationId], references: [id])
-  onboarding       Onboarding? @relation(fields: [onboardingId], references: [id])
-  user             User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  treatments       Treatment[]
-}
-
-model Food {
-  id            String        @id @default(uuid())
-  name          String
-  userId        String?
-  deviceId      String?
-  dataPerAmount Float?        @default(100)
-  dataPerUnit   String?       @default("g")
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  foodLogs      FoodLogItem[]
-  device        Device?       @relation(fields: [deviceId], references: [id])
-  user          User?         @relation(fields: [userId], references: [id])
-  macros        Macro[]       @relation("FoodMacros")
-  mealFoods     MealFood[]
-
-  @@map("foods")
-}
-
-model UserFood {
-  id                      String        @id @default(uuid())
-  name                    String
-  userId                  String
-  deviceId                String?
-  FoodSource              FoodSource
-  servingSize             Float?
-  servingUnit             String?
-  alternativeServingSizes String[]
-  alternativeServingUnits String[]
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
-  foodLogs                FoodLogItem[]
-  macros                  Macro[]       @relation("UserFoodMacros")
-  mealFoods               MealFood[]
-  device                  Device?       @relation(fields: [deviceId], references: [id])
-  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_foods")
-}
-
-model QuickAdd {
-  id        String        @id @default(uuid())
-  userId    String
-  deviceId  String?
-  mealType  MealType
-  loggedAt  DateTime
-  createdAt DateTime      @default(now())
-  foodLogs  FoodLogItem[]
-  macros    Macro[]       @relation("QuickAddMacros")
-  mealFoods MealFood[]
-  device    Device?       @relation(fields: [deviceId], references: [id])
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("quick_adds")
-}
-
-model Macro {
-  id            String       @id @default(uuid())
-  energy        Float?
-  calories      Float?
-  protein       Float?
-  carbs         Float?
-  fat           Float?
-  fiber         Float?
-  foodId        String?
-  userFoodId    String?
-  quickAddId    String?
-  foodLogItemId String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  food          Food?        @relation("FoodMacros", fields: [foodId], references: [id], onDelete: Cascade)
-  foodLogItem   FoodLogItem? @relation("FoodLogItemMacros", fields: [foodLogItemId], references: [id], onDelete: Cascade)
-  quickAdd      QuickAdd?    @relation("QuickAddMacros", fields: [quickAddId], references: [id], onDelete: Cascade)
-  userFood      UserFood?    @relation("UserFoodMacros", fields: [userFoodId], references: [id], onDelete: Cascade)
-
-  @@map("macros")
-}
-
-model Meal {
-  id        String        @id @default(uuid())
-  name      String
-  userId    String
-  deviceId  String?
-  mealType  MealType
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  foodLogs  FoodLogItem[]
-  foods     MealFood[]
-  device    Device?       @relation(fields: [deviceId], references: [id])
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("meals")
-}
-
-model MealFood {
-  id         String    @id @default(uuid())
-  mealId     String
-  foodId     String?
-  userFoodId String?
-  quickAddId String?
-  quantity   Float
-  food       Food?     @relation(fields: [foodId], references: [id], onDelete: Cascade)
-  meal       Meal      @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id], onDelete: Cascade)
-  userFood   UserFood? @relation(fields: [userFoodId], references: [id], onDelete: Cascade)
-
-  @@map("meal_foods")
-}
-
-model FoodLog {
-  id        String        @id @default(uuid())
-  userId    String
-  deviceId  String?
-  mealType  MealType
-  loggedAt  DateTime      @default(now())
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  items     FoodLogItem[]
-  device    Device?       @relation(fields: [deviceId], references: [id])
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("food_logs")
-}
-
-model FoodLogItem {
-  id         String    @id @default(uuid())
-  logId      String
-  foodId     String?
-  userFoodId String?
-  mealId     String?
-  quickAddId String?
-  quantity   Float
-  unit       String
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  food       Food?     @relation(fields: [foodId], references: [id])
-  log        FoodLog   @relation(fields: [logId], references: [id], onDelete: Cascade)
-  meal       Meal?     @relation(fields: [mealId], references: [id])
-  quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id])
-  userFood   UserFood? @relation(fields: [userFoodId], references: [id])
-  macros     Macro[]   @relation("FoodLogItemMacros")
-
-  @@map("food_log_items")
-}
-
-model WaterLog {
-  id             String          @id @default(uuid())
-  userId         String
-  deviceId       String?
-  date           DateTime
-  targets        Float[]
-  targetInMl     Float?          @default(3000)
-  totalConsumed  Float           @default(0)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  consumedWaters ConsumedWater[]
-  device         Device?         @relation(fields: [deviceId], references: [id])
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("water_logs")
-}
-
-model ConsumedWater {
-  id         String   @id @default(uuid())
-  consumedAt DateTime
-  consumedML Float?
-  consumedOZ Float?
-  waterLogId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  waterLog   WaterLog @relation(fields: [waterLogId], references: [id], onDelete: Cascade)
-
-  @@map("consumed_waters")
-}
-
-model weightlog {
-  id                String   @id @default(uuid())
-  userId            String
-  deviceId          String?
-  date              DateTime
-  current_weight_kg Float?
-  current_weight_lb Float?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  device            Device?  @relation(fields: [deviceId], references: [id])
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("weight_logs")
-}
-
-model SideEffect {
-  id               String             @id @default(uuid())
-  userId           String?
-  deviceId         String?
-  name             String
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  SideEffectToLogs SideEffectToLogs[]
-  device           Device?            @relation(fields: [deviceId], references: [id])
-  user             User?              @relation(fields: [userId], references: [id])
-
-  @@map("side_effects")
-}
-
-model SideEffectLog {
-  id               String             @id @default(uuid())
-  userId           String
-  deviceId         String?
-  date             DateTime
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  SideEffectToLogs SideEffectToLogs[]
-  device           Device?            @relation(fields: [deviceId], references: [id])
-  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("side_effect_logs")
-}
-
-model WalkingStepsLog {
-  id            String   @id @default(uuid())
-  userId        String
-  deviceId      String?
-  date          DateTime
-  NumberOfSteps Int
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  device        Device?  @relation(fields: [deviceId], references: [id])
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("walking_steps_logs")
-}
-
-model Dashboard {
-  id             String   @id @default(uuid())
-  userId         String
-  deviceId       String?
-  feeling        Int?
-  estimatedLevel Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  device         Device?  @relation(fields: [deviceId], references: [id])
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("dashboards")
-}
-
-model Height {
-  id        String   @id @default(uuid())
-  userId    String
-  deviceId  String?
-  height_cm Float?
-  height_ft Int?
-  height_in Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  device    Device?  @relation(fields: [deviceId], references: [id])
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("heights")
-}
-
-model Photo {
-  id        String   @id @default(uuid())
-  userId    String
-  deviceId  String?
-  photoUrl  String
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  device    Device?  @relation(fields: [deviceId], references: [id])
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("photos")
-}
-
-model Family {
-  id                 String               @id @default(uuid())
-  name               String
-  dob                DateTime?
-  userId             String
-  deviceId           String?
-  isActive           Boolean              @default(true)
-  accepted           Boolean              @default(false)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  FamilyToPermission FamilyToPermission[]
-  device             Device?              @relation(fields: [deviceId], references: [id])
-  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pairingCodes       PairingCode[]
-
-  @@map("families")
-}
-
-model PairingCode {
-  id        String   @id @default(uuid())
-  familyId  String
-  userId    String
-  code      String
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([code])
-  @@map("family_pairing_codes")
-}
-
-model Invitation {
-  id                     String                   @id @default(uuid())
-  token                  String                   @unique
-  invitedById            String
-  expiresAt              DateTime?
-  consumed               Boolean                  @default(false)
-  consumedBy             String?
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  InvitationToPermission InvitationToPermission[]
-  invitedBy              User                     @relation(fields: [invitedById], references: [id], onDelete: Cascade)
-
-  @@map("family_invitations")
-}
-
-model Permission {
-  id                     String                   @id @default(uuid())
-  name                   String
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
-  userId                 String
-  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  FamilyToPermission     FamilyToPermission[]
-  InvitationToPermission InvitationToPermission[]
-}
-
-model FamilyToPermission {
-  A          String
-  B          String
-  families   Family     @relation(fields: [A], references: [id], onDelete: Cascade)
-  Permission Permission @relation(fields: [B], references: [id], onDelete: Cascade)
-
-  @@id([A, B], map: "_FamilyToPermission_AB_pkey")
-  @@index([B], map: "_FamilyToPermission_B_index")
-  @@map("_FamilyToPermission")
-}
-
-model InvitationToPermission {
-  A                  String
-  B                  String
-  family_invitations Invitation @relation(fields: [A], references: [id], onDelete: Cascade)
-  Permission         Permission @relation(fields: [B], references: [id], onDelete: Cascade)
-
-  @@id([A, B], map: "_InvitationToPermission_AB_pkey")
-  @@index([B], map: "_InvitationToPermission_B_index")
-  @@map("_InvitationToPermission")
-}
-
-model SideEffectToLogs {
-  A                String
-  B                String
-  side_effects     SideEffect    @relation(fields: [A], references: [id], onDelete: Cascade)
-  side_effect_logs SideEffectLog @relation(fields: [B], references: [id], onDelete: Cascade)
-
-  @@id([A, B], map: "_SideEffectToLogs_AB_pkey")
-  @@index([B], map: "_SideEffectToLogs_B_index")
-  @@map("_SideEffectToLogs")
-}
-
 enum Role {
   USER
   ADMIN
@@ -604,4 +37,693 @@ enum FoodSource {
   MANUAL
   BARCODE
   AI_SCAN
+}
+
+/**
+ * ---------------------- USER & AUTH ----------------------
+ */
+
+model User {
+  id          String   @id
+  email       String?  @unique
+  name        String?
+  birthday    String?
+  gender      Gender?
+  isAnonymous Boolean  @default(true)
+  isOnboarded Boolean  @default(false)
+  role        Role     @default(USER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  provider    String?
+  providerUid String?
+
+  members Family[]
+
+  onboarding     Onboarding?
+  devices        Device[]
+  Tokens         Token[]
+  medications    Medication[]
+  injectionLogs  InjectionLog[]
+  treatments     Treatment[]
+  injectionShots InjectionShot[]
+
+  foods              Food[]
+  meals              Meal[]
+  userFoods          UserFood[]
+  quickAdds          QuickAdd[]
+  foodLogs           FoodLog[]
+  weightlogs         weightlog[]
+  sideEffects        SideEffect[]
+  sideEffectLogs     SideEffectLog[]
+  waterLogs          WaterLog[]
+  nextInjectionShots NextInjectionShot[]
+  walkingStepsLogs   WalkingStepsLog[]
+  dashboards         Dashboard[]
+  heights            Height[]
+  photos             Photo[]
+  invitations        Invitation[]
+  pairingCodes       PairingCode[]
+  permissions        Permission[]
+
+  @@map("users")
+}
+
+model Device {
+  id          String      @id @unique
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  platform    String?
+  isOnboarded Boolean     @default(false)
+  onboarding  Onboarding?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  injectionLogs  InjectionLog[]
+  treatments     Treatment[]
+  injectionShots InjectionShot[]
+
+  foods      Food[]
+  meals      Meal[]
+  userFoods  UserFood[]
+  quickAdds  QuickAdd[]
+  foodLogs   FoodLog[]
+  weightlogs weightlog[]
+
+  sideEffects    SideEffect[]
+  sideEffectLogs SideEffectLog[]
+
+  waterLogs          WaterLog[]
+  nextInjectionShots NextInjectionShot[]
+  walkingStepsLogs   WalkingStepsLog[]
+  dashboards         Dashboard[]
+  heights            Height[]
+  photos             Photo[]
+  families           Family[]
+}
+
+model Token {
+  id        String    @id
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  type      TokenType @default(ACCESS_TOKEN)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  userAgent String?
+  ipAddress String?
+
+  @@map("access_tokens")
+}
+
+/**
+ * ---------------------- MEDICATIONS ----------------------
+ */
+
+model Medication {
+  id                 String              @id @default(uuid())
+  name               String
+  userId             String?
+  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  injectionLogs      InjectionLog[]
+  injectionShots     InjectionShot[]
+  nextInjectionShots NextInjectionShot[]
+
+  @@map("medications")
+}
+
+model Onboarding {
+  id     String  @id @default(uuid())
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String? @unique
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  glp_medication_on Boolean
+
+  height_cm Float?
+  height_ft Int?
+  height_in Int?
+
+  current_weight_kg Float?
+  current_weight_lb Float?
+  weight_goal_kg    Float?
+  weight_goal_lb    Float?
+
+  goal_duration   String
+  frustrate_thing String
+  lifestyle       String
+  protein_goal    String
+  motivation      String[]
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  treatments     Treatment[]
+  injectionShots InjectionShot[]
+
+  @@map("onboardings")
+}
+
+model InjectionLog {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  medicationId String?
+  medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  date      DateTime
+  dosage    String
+  site      String
+  painLevel Float    @default(0)
+  notes     String?
+
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  treatments Treatment[]
+
+  @@map("injection_logs")
+}
+
+model NextInjectionShot {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  medicationId String?
+  medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+  dose             String
+  injection_device String
+
+  Injectionsite String?
+
+  Date DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("next_injections")
+}
+
+model Treatment {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  lastInjectionId String?
+  lastInjection   InjectionLog? @relation(fields: [lastInjectionId], references: [id], onDelete: SetNull)
+
+  onboardingId String?
+  onboarding   Onboarding? @relation(fields: [onboardingId], references: [id], onDelete: SetNull)
+
+  injectionShotId String?
+  injectionShot   InjectionShot? @relation(fields: [injectionShotId], references: [id], onDelete: SetNull)
+
+  treatmentNotes String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InjectionShot {
+  id String @id @default(uuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  onboardingId String?
+  onboarding   Onboarding? @relation(fields: [onboardingId], references: [id], onDelete: SetNull)
+
+  medicationId String?
+  medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+  current_dose     String
+  injection_device String
+  often_shots      Int
+
+  Injectionsite String?
+
+  currentStock Float @default(0.00)
+
+  isFirstDose Boolean     @default(true)
+  CreatedAt   DateTime    @default(now())
+  treatments  Treatment[]
+}
+
+/**
+ * ---------------------- FOODS ----------------------
+ */
+
+model Food {
+  id   String @id @default(uuid())
+  name String
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  dataPerAmount Float?  @default(100)
+  dataPerUnit   String? @default("g")
+
+  macros    Macro[]       @relation("FoodMacros")
+  mealFoods MealFood[]
+  foodLogs  FoodLogItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("foods")
+}
+
+model UserFood {
+  id   String @id @default(uuid())
+  name String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  FoodSource FoodSource
+
+  servingSize Float?
+  servingUnit String?
+
+  alternativeServingSizes String[]
+  alternativeServingUnits String[]
+
+  macros    Macro[]       @relation("UserFoodMacros")
+  mealFoods MealFood[]
+  foodLogs  FoodLogItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_foods")
+}
+
+model QuickAdd {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  mealType MealType
+  loggedAt DateTime
+
+  macros Macro[] @relation("QuickAddMacros")
+
+  foodLogs FoodLogItem[]
+
+  createdAt DateTime   @default(now())
+  mealFoods MealFood[]
+
+  @@map("quick_adds")
+}
+
+/**
+ * ---------------------- MACROS ----------------------
+ */
+
+model Macro {
+  id String @id @default(uuid())
+
+  energy   Float?
+  calories Float?
+  protein  Float?
+  carbs    Float?
+  fat      Float?
+  fiber    Float?
+
+  foodId String?
+  food   Food?   @relation("FoodMacros", fields: [foodId], references: [id], onDelete: Cascade)
+
+  userFoodId String?
+  userFood   UserFood? @relation("UserFoodMacros", fields: [userFoodId], references: [id], onDelete: Cascade)
+
+  quickAddId String?
+  quickAdd   QuickAdd? @relation("QuickAddMacros", fields: [quickAddId], references: [id], onDelete: Cascade)
+
+  foodLogItemId String?
+  foodLogItem   FoodLogItem? @relation("FoodLogItemMacros", fields: [foodLogItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("macros")
+}
+
+/**
+ * ---------------------- MEALS ----------------------
+ */
+
+model Meal {
+  id   String @id @default(uuid())
+  name String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  mealType MealType
+
+  foods    MealFood[]
+  foodLogs FoodLogItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("meals")
+}
+
+model MealFood {
+  id     String @id @default(uuid())
+  mealId String
+  meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  foodId String?
+  food   Food?   @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  userFoodId String?
+  userFood   UserFood? @relation(fields: [userFoodId], references: [id], onDelete: Cascade)
+
+  quickAddId String?
+  quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id], onDelete: Cascade)
+
+  quantity Float
+
+  @@map("meal_foods")
+}
+
+/**
+ * ---------------------- FOOD LOGGING (FIXED) ----------------------
+ */
+
+model FoodLog {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  mealType MealType
+  loggedAt DateTime @default(now())
+
+  items FoodLogItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("food_logs")
+}
+
+model FoodLogItem {
+  id String @id @default(uuid())
+
+  logId String
+  log   FoodLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  foodId String?
+  food   Food?   @relation(fields: [foodId], references: [id], onDelete: SetNull)
+
+  userFoodId String?
+  userFood   UserFood? @relation(fields: [userFoodId], references: [id], onDelete: SetNull)
+
+  mealId String?
+  meal   Meal?   @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  quickAddId String?
+  quickAdd   QuickAdd? @relation(fields: [quickAddId], references: [id], onDelete: SetNull)
+
+  quantity Float
+  unit     String
+
+  macros Macro[] @relation("FoodLogItemMacros")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("food_log_items")
+}
+
+// -------------------Water log -------------------
+model WaterLog {
+  id             String          @id @default(uuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId       String?
+  device         Device?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  date           DateTime
+  targets        Float[]
+  targetInMl     Float?          @default(3000)
+  totalConsumed  Float           @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  consumedWaters ConsumedWater[]
+
+  @@map("water_logs")
+}
+
+model ConsumedWater {
+  id         String   @id @default(uuid())
+  consumedAt DateTime
+  consumedML Float?
+  consumedOZ Float?
+  waterLogId String
+  waterLog   WaterLog @relation(fields: [waterLogId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("consumed_waters")
+}
+
+// -------------------Weight log -------------------
+model weightlog {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  date              DateTime
+  current_weight_kg Float?
+  current_weight_lb Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("weight_logs")
+}
+
+// -------------------Side effects -------------------
+model SideEffect {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs SideEffectLog[] @relation("SideEffectToLogs")
+
+  @@map("side_effects")
+}
+
+model SideEffectLog {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  date DateTime
+
+  sideEffects SideEffect[] @relation("SideEffectToLogs")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("side_effect_logs")
+}
+
+//------------------- Walking Steps Log -------------------
+model WalkingStepsLog {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  date DateTime
+
+  NumberOfSteps Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("walking_steps_logs")
+}
+
+// ------------------- Dashboard New Fields -------------------
+model Dashboard {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  feeling Int?
+
+  estimatedLevel Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("dashboards")
+}
+
+model Height {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  height_cm Float?
+  height_ft Int?
+  height_in Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("heights")
+}
+
+model Photo {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  photoUrl String
+
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("photos")
+}
+
+model Family {
+  id String @id @default(uuid())
+
+  name String
+  dob  DateTime?
+
+  permissions Permission[]
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  isActive Boolean @default(true)
+  accepted Boolean @default(false)
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  pairingCodes PairingCode[]
+
+  @@map("families")
+}
+
+model PairingCode {
+  id       String @id @default(uuid())
+  familyId String
+  family   Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@map("family_pairing_codes")
+}
+
+model Invitation {
+  id String @id @default(uuid())
+
+  token String @unique
+
+  invitedById String
+  invitedBy   User   @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  expiresAt  DateTime?
+  consumed   Boolean   @default(false)
+  consumedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  permissions Permission[]
+
+  @@map("family_invitations")
+}
+
+model Permission {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  invitations Invitation[]
+  families    Family[]
 }

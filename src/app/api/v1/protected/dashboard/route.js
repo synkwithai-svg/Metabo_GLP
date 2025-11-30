@@ -53,7 +53,13 @@ export async function GET(req) {
         // ---------------- SIDE EFFECT ----------------
         const sideEffectLog = await db.SideEffectLog.findMany({
             where: { userId, date: { gte: startOfDay, lte: endOfDay } },
-            include: { sideEffects: true },
+            include: {
+                sideEffects: {
+                    include: {
+                        sideEffect: true
+                    }
+                }
+            },
         });
 
         // ---------------- WEIGHT LOG (current weight) ----------------
