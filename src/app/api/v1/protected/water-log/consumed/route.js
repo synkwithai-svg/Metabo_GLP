@@ -199,3 +199,65 @@ export async function POST(req) {
         );
     }
 }
+
+
+
+
+
+export async function GET(req) {
+    try {
+        const userId = req.headers.get("x-user-id");
+
+        if (!userId) {
+            return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
+        }
+
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+
+        const endOfToday = new Date();
+        endOfToday.setUTCHours(23, 59, 59, 999);
+
+        // Fetch today's water log
+        const waterLog = await db.waterLog.findFirst({
+            where: {
+                userId,
+                date: {
+                    gte: today,
+                    lte: endOfToday,
+                },
+            },
+            include: {
+                consumedWaters: true, // ✅ FIXED
+            },
+        });
+
+        if (!waterLog) {
+            return NextResponse.json({
+                success: true,
+                message: "No water consumed today",
+                totalConsumedML: 0,
+                totalConsumedOZ: 0,
+                consumedHistory: [],
+            });
+        }
+
+        const totalML = waterLog.totalConsumed || 0;
+        const totalOZ = mlToOz(totalML);
+
+        return NextResponse.json({
+            success: true,
+            message: "Water consumption for today",
+            totalConsumedML: totalML,
+            totalConsumedOZ: totalOZ,
+            consumedHistory: waterLog.consumedWaters, // ✅ FIXED
+        });
+
+    } catch (error) {
+        console.error("GET Daily Consumed API Error:", error);
+        return NextResponse.json(
+            { success: false, message: "Internal server error", error: { name: error.name, message: error.message } },
+            { status: 500 }
+        );
+    }
+}
