@@ -22,11 +22,15 @@ export async function POST(req) {
                 { status: 400 }
             );
         }
+        // console.log("before  firebase")
 
         // 1️⃣ Register user in Firebase
         let firebaseUser;
         try {
+            // console.log("inside  firebase")
+
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            // console.log("after  firebase")
             firebaseUser = userCredential.user;
         } catch (err) {
             console.error("Registration error:", err);
