@@ -6,48 +6,41 @@ export async function POST(req) {
         const body = await req.json();
         const userId = req.headers.get("x-user-id");
         const deviceId = req.headers.get("x-user-deviceid") || null;
+        const { sideEffects } = body;
 
         if (!userId) {
             return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
-        }
-
-        const { date, sideEffects } = body;
-
-        if (!date) {
-            return NextResponse.json({ message: "Date is required" }, { status: 400 });
         }
 
         if (!sideEffects || !Array.isArray(sideEffects)) {
             return NextResponse.json({ message: "Provide sideEffects array" }, { status: 400 });
         }
 
-        const logDate = new Date(date);
+        const connectSideEffects = sideEffects.map((id) => ({ id }));
 
-        // Find or create side effect log
+        // Find latest side effect log for the user
         let sideEffectLog = await db.sideEffectLog.findFirst({
-            where: { userId, date: logDate },
+            where: { userId },
+            orderBy: { date: "desc" },
             include: { sideEffects: true },
         });
 
-        const connectSideEffects = sideEffects.map((id) => ({ id }));
-
         if (!sideEffectLog) {
+            // Create new log with default date (now)
             sideEffectLog = await db.sideEffectLog.create({
                 data: {
                     userId,
                     deviceId,
-                    date: logDate,
                     sideEffects: { connect: connectSideEffects },
                 },
                 include: { sideEffects: true },
             });
         } else {
+            // Update latest log's side effects
             sideEffectLog = await db.sideEffectLog.update({
                 where: { id: sideEffectLog.id },
                 data: {
-                    sideEffects: {
-                        set: connectSideEffects,
-                    },
+                    sideEffects: { set: connectSideEffects },
                 },
                 include: { sideEffects: true },
             });

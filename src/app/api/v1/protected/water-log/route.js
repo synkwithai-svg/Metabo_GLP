@@ -6,31 +6,29 @@ export async function POST(req) {
         const body = await req.json();
         const userId = req.headers.get("x-user-id");
         const deviceId = req.headers.get("x-user-deviceid") || null;
+        const { targets } = body;
 
         if (!userId) {
             return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
-        }
-
-        const { date, targets } = body;
-
-        if (!date) {
-            return NextResponse.json({ message: "Date is required" }, { status: 400 });
         }
 
         if (!targets || !Array.isArray(targets)) {
             return NextResponse.json({ message: "Provide targets array" }, { status: 400 });
         }
 
-        const logDate = new Date(date);
-
-        // Find or create water log
-        let waterLog = await db.waterLog.findFirst({ where: { userId, date: logDate } });
+        // Find the latest water log for the user
+        let waterLog = await db.waterLog.findFirst({
+            where: { userId },
+            orderBy: { date: "desc" },
+        });
 
         if (!waterLog) {
+            // Create new log with default date (now)
             waterLog = await db.waterLog.create({
-                data: { userId, deviceId, date: logDate, targets },
+                data: { userId, deviceId, targets },
             });
         } else {
+            // Update latest log's targets
             waterLog = await db.waterLog.update({
                 where: { id: waterLog.id },
                 data: { targets },

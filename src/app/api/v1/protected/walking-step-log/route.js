@@ -6,15 +6,10 @@ export async function POST(req) {
         const body = await req.json();
         const userId = req.headers.get("x-user-id");
         const deviceId = req.headers.get("x-user-deviceid");
-
-        const { date, NumberOfSteps } = body;
+        const { NumberOfSteps } = body;
 
         if (!userId) {
             return NextResponse.json({ success: false, message: "userId is required" }, { status: 400 });
-        }
-
-        if (!date || isNaN(new Date(date))) {
-            return NextResponse.json({ success: false, message: "Invalid or missing date" }, { status: 400 });
         }
 
         if (NumberOfSteps == null || NumberOfSteps < 0) {
@@ -34,11 +29,11 @@ export async function POST(req) {
             }
         }
 
+        // Create log using default date (now)
         const walkingStepLog = await db.walkingStepsLog.create({
             data: {
                 userId,
                 deviceId: deviceId || null,
-                date: new Date(date),
                 NumberOfSteps,
             },
         });

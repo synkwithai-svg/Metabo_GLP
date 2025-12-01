@@ -19,11 +19,11 @@ export async function POST(req) {
             );
         }
 
-        const { date, current_weight_kg, current_weight_lb } = body;
+        const { current_weight_kg, current_weight_lb } = body;
 
-        if (!date || (!current_weight_kg && !current_weight_lb)) {
+        if (!current_weight_kg && !current_weight_lb) {
             return NextResponse.json(
-                { message: "Date and at least one of current_weight_kg or current_weight_lb is required" },
+                { message: "Provide at least current_weight_kg or current_weight_lb" },
                 { status: 400 }
             );
         }
@@ -36,11 +36,11 @@ export async function POST(req) {
         kg = +kg.toFixed(2);
         lb = +lb.toFixed(2);
 
+        // Create weight log with default date (now)
         const weightLog = await db.weightlog.create({
             data: {
                 userId,
                 deviceId,
-                date: new Date(date),
                 current_weight_kg: kg,
                 current_weight_lb: lb,
             },
