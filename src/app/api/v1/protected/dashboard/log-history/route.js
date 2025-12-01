@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { startOfDay, endOfDay, subDays } from "date-fns";
+import dayjs from "dayjs";
 
 export async function GET(req) {
     try {
         const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid");
+        const deviceId = req.headers.get("x-user-deviceid") || undefined;
 
         if (!userId) {
             return NextResponse.json(
@@ -17,16 +17,16 @@ export async function GET(req) {
         // -------------------------------
         // DATE FILTERING LOGIC
         // -------------------------------
-        const { searchParams } = new URL(req.url);
-        const dateParam = searchParams.get("date");
+        const url = new URL(req.url);
+        const dateParam = url.searchParams.get("date");
 
-        let targetDate = dateParam ? new Date(dateParam) : new Date();
+        const targetDate = dateParam ? dayjs(dateParam) : dayjs();
 
-        const todayStart = startOfDay(targetDate);
-        const todayEnd = endOfDay(targetDate);
+        const todayStart = targetDate.startOf("day").toDate();
+        const todayEnd = targetDate.endOf("day").toDate();
 
-        const yStart = startOfDay(subDays(targetDate, 1));
-        const yEnd = endOfDay(subDays(targetDate, 1));
+        const yesterdayStart = targetDate.subtract(1, "day").startOf("day").toDate();
+        const yesterdayEnd = targetDate.subtract(1, "day").endOf("day").toDate();
 
         const baseFilter = {
             userId,
@@ -84,35 +84,34 @@ export async function GET(req) {
             walkingY,
         ] = await Promise.all([
             db.foodLog.findMany({
-                where: { ...baseFilter, loggedAt: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, loggedAt: { gte: yesterdayStart, lte: yesterdayEnd } },
                 include: { items: true },
             }),
             db.weightlog.findMany({
-                where: { ...baseFilter, date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, date: { gte: yesterdayStart, lte: yesterdayEnd } },
             }),
             db.waterLog.findMany({
-                where: { ...baseFilter, date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, date: { gte: yesterdayStart, lte: yesterdayEnd } },
                 include: { consumedWaters: true },
             }),
             db.injectionLog.findMany({
-                where: { ...baseFilter, date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, date: { gte: yesterdayStart, lte: yesterdayEnd } },
             }),
             db.nextInjectionShot.findMany({
-                where: { ...baseFilter, Date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, Date: { gte: yesterdayStart, lte: yesterdayEnd } },
             }),
             db.sideEffectLog.findMany({
-                where: { ...baseFilter, date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, date: { gte: yesterdayStart, lte: yesterdayEnd } },
                 include: { sideEffects: true },
             }),
             db.walkingStepsLog.findMany({
-                where: { ...baseFilter, date: { gte: yStart, lte: yEnd } },
+                where: { ...baseFilter, date: { gte: yesterdayStart, lte: yesterdayEnd } },
             }),
         ]);
 
         // -----------------------------------------------------
         // NORMALIZE DATA INTO UNIFIED STRUCTURE
         // -----------------------------------------------------
-
         const normalize = (arr, type, timeField = "time") =>
             arr.map((x) => ({
                 type,
