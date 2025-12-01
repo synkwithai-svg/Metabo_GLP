@@ -88,7 +88,7 @@ export async function proxy(request) {
       );
     }
 
-    const familyMember = await db.familyMember.findUnique({
+    const familyMember = await db.family.findUnique({
       where: { id: payload.familyId },
       include: { user: true },
     });

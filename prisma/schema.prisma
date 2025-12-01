@@ -498,7 +498,7 @@ model WaterLog {
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceId       String?
   device         Device?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  date           DateTime
+  date           DateTime        @default(now())
   targets        Float[]
   targetInMl     Float?          @default(3000)
   totalConsumed  Float           @default(0)
@@ -531,7 +531,7 @@ model weightlog {
   deviceId String?
   device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-  date              DateTime
+  date              DateTime @default(now())
   current_weight_kg Float?
   current_weight_lb Float?
 
@@ -568,7 +568,7 @@ model SideEffectLog {
   deviceId String?
   device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-  date DateTime
+  date DateTime @default(now())
 
   sideEffects SideEffect[] @relation("SideEffectToLogs")
 
@@ -588,7 +588,7 @@ model WalkingStepsLog {
   deviceId String?
   device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-  date DateTime
+  date DateTime @default(now())
 
   NumberOfSteps Int
 
