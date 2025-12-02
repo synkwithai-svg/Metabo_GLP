@@ -128,7 +128,7 @@ model Token {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String    @unique
   type      TokenType @default(ACCESS_TOKEN)
-  expiresAt DateTime
+  expiresAt DateTime?
   createdAt DateTime  @default(now())
   userAgent String?
   ipAddress String?
@@ -718,6 +718,7 @@ model Invitation {
 model Permission {
   id        String   @id @default(uuid())
   name      String
+  slug      String?    @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
