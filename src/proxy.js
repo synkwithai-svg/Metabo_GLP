@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Role } from "@/lib/enums";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/options";
+import { familyProxy } from "./middleware/family-proxy";
 
 const userProtectedRoutes = ["/api/v1/protected", "/api/v1/protected/admin"];
 const familyProtectedRoutes = ["/api/v1/protected/family"];
@@ -29,7 +30,6 @@ export async function proxy(request) {
   const isUserProtected = userProtectedRoutes.some((r) =>
     pathname.startsWith(r)
   );
-
   const isFamilyProtected = familyProtectedRoutes.some((r) =>
     pathname.startsWith(r)
   );
@@ -65,12 +65,10 @@ export async function proxy(request) {
   }
 
   // -----------------------------------------------------
-  // FAMILY TOKEN LOGIC
+  // FAMILY TOKEN LOGIC (DELEGATE)
   // -----------------------------------------------------
-  const isFamilyToken = payload.type === "FAMILY_ACCESS";
-
-  if (isFamilyToken) {
-    // ❌ If family tries to access NON-family routes → BLOCK
+  if (payload.type === "FAMILY_ACCESS") {
+    // ❌ Block family trying to access non-family routes
     if (!isFamilyProtected) {
       return new NextResponse(
         JSON.stringify({
@@ -81,40 +79,14 @@ export async function proxy(request) {
       );
     }
 
-    if (!payload.familyId) {
-      return new NextResponse(
-        JSON.stringify({ success: false, message: "Invalid family token" }),
-        { status: 401 }
-      );
-    }
-
-    const familyMember = await db.family.findUnique({
-      where: { id: payload.familyId },
-      include: { user: true },
-    });
-
-    if (!familyMember) {
-      return new NextResponse(
-        JSON.stringify({ success: false, message: "Family member not found" }),
-        { status: 401 }
-      );
-    }
-
-    const res = NextResponse.next();
-    res.headers.set("x-auth-type", "family");
-    res.headers.set("x-family-id", familyMember.id);
-    res.headers.set("x-family-name", familyMember.name ?? "");
-    res.headers.set("x-user-id", familyMember.userId);
-
-    return res;
+    // Pass pathname to check permission
+    return familyProxy(payload, pathname);
   }
 
   // -----------------------------------------------------
   // NORMAL USER TOKEN LOGIC
   // -----------------------------------------------------
-  const user = await db.user.findUnique({
-    where: { id: payload.userId },
-  });
+  const user = await db.user.findUnique({ where: { id: payload.userId } });
 
   if (!user) {
     return new NextResponse(

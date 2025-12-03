@@ -52,6 +52,7 @@ model User {
   isAnonymous Boolean  @default(true)
   isOnboarded Boolean  @default(false)
   role        Role     @default(USER)
+  fcmToken    String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -718,7 +719,7 @@ model Invitation {
 model Permission {
   id        String   @id @default(uuid())
   name      String
-  slug      String?    @unique
+  slug      String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

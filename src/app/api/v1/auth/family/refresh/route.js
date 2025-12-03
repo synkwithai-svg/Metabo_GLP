@@ -59,10 +59,13 @@ export async function POST(req) {
             );
         }
 
-        // -----------------------------------
-        // 5️⃣ Check if refresh token is expired
-        // -----------------------------------
-        if (new Date() > storedToken.expiresAt) {
+        // ----------------------------------------------
+        // 5️⃣ FAMILY refresh tokens do NOT expire
+        //     - If expiresAt is null → always valid
+        //     - If expiresAt exists → only then check expiry
+        // ----------------------------------------------
+        if (storedToken.expiresAt && new Date() > storedToken.expiresAt) {
+            // Remove all family refresh tokens for safety
             await db.token.deleteMany({
                 where: { userId, type: "FAMILY_REFRESH_TOKEN" }
             });
@@ -89,7 +92,7 @@ export async function POST(req) {
         const newAccessToken = await generateAccessToken(
             userId,
             deviceId,
-            familyId // This triggers FAMILY_ACCESS token
+            familyId
         );
 
         return NextResponse.json(
