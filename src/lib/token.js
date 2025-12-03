@@ -50,6 +50,7 @@ export async function generateAccessToken(userId, deviceId = null, familyId = nu
 
 // -------------------------------------------------------------------
 // Generate REFRESH TOKEN (Stored in DB)
+// For FAMILY_REFRESH token -> no expiry
 // -------------------------------------------------------------------
 export async function generateRefreshToken(userId, deviceId = null, familyId = null) {
   const isFamily = Boolean(familyId);
@@ -64,32 +65,42 @@ export async function generateRefreshToken(userId, deviceId = null, familyId = n
   if (deviceId) payload.deviceId = deviceId;
   if (familyId) payload.familyId = familyId;
 
-  const token = await new SignJWT(payload)
+  const jwt = new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${process.env.REFRESH_TOKEN_TIME || "7"}d`)
-    .sign(JWT_SECRET);
+    .setIssuedAt();
 
-  // Store refresh token in database
+  // ✅ Normal refresh token → set expiry
+  if (!isFamily) {
+    jwt.setExpirationTime(`${process.env.REFRESH_TOKEN_TIME || "7"}d`);
+  }
+
+  // ❌ Family refresh token → NO expiry set
+  const token = await jwt.sign(JWT_SECRET);
+
+  // Insert into DB
   await db.token.create({
     data: {
       id: `${userId}-${Date.now()}-${isFamily ? "family-refresh" : "refresh"}`,
       userId,
       token,
       type: tokenType,
-      expiresAt: new Date(
-        Date.now() +
-        Number.parseInt(process.env.REFRESH_TOKEN_TIME || "7") *
-        24 *
-        60 *
-        60 *
-        1000
-      ),
+      // ❌ FAMILY REFRESH -> no expiresAt stored
+      expiresAt: isFamily
+        ? null
+        : new Date(
+          Date.now() +
+          Number.parseInt(process.env.REFRESH_TOKEN_TIME || "7") *
+          24 *
+          60 *
+          60 *
+          1000
+        ),
     },
   });
 
   return token;
 }
+
 
 
 
