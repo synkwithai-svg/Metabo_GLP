@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import admin from "@/lib/services/firebaseAdmin";
+import { firebaseAdmin } from "@/lib/services/firebaseAdmin";
 import { db } from "@/lib/db";
 import { verifyToken } from "@/lib/token";
 
@@ -65,8 +65,8 @@ export async function POST(req) {
 
     // 5️⃣ Upgrade anonymous Firebase user using Admin SDK
     try {
-      await admin.auth().getUser(userId);
-      await admin.auth().updateUser(userId, { email, password });
+      await firebaseAdmin.auth().getUser(userId);
+      await firebaseAdmin.auth().updateUser(userId, { email, password });
     } catch (err) {
       return NextResponse.json(
         { success: false, message: "User not found or update failed" },

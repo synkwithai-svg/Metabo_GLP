@@ -1,32 +1,19 @@
-// import admin from "firebase-admin";
-
-// if (!admin.apps.length) {
-//   admin.initializeApp({
-//     credential: admin.credential.cert({
-//       projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID as string,
-//       clientEmail: process.env.NEXT_PUBLIC_FIREBASE_CLIENT_EMAIL as string,
-//       privateKey: process.env.NEXT_PUBLIC_FIREBASE_PRIVATE_KEY?.replace(
-//         /\\n/g,
-//         "\n"
-//       )!,
-//     }),
-//   });
-// }
-// export const db = admin.firestore();
-
-// export default admin;
-
 import admin from "firebase-admin";
 
+let app;
+
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID!,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")!,
-    }),
+  const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
+  
+  if (!serviceAccountString) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY env variable is not set");
+  }
+
+  const serviceAccount = JSON.parse(serviceAccountString);
+
+  app = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
-export const db = admin.firestore();
-export default admin;
+export const firebaseAdmin = admin;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/services/firebase";
-import admin from "@/lib/services/firebaseAdmin";
+import { firebaseAdmin } from "@/lib/services/firebaseAdmin";
 import { db } from "@/lib/db";
 import { generateAccessToken, generateRefreshToken } from "@/lib/token";
 import { z } from "zod";
@@ -36,7 +36,7 @@ export async function POST(req) {
     // 1️⃣ Google login flow
     if (googleIdToken) {
       try {
-        const decodedToken = await admin.auth().verifyIdToken(googleIdToken);
+        const decodedToken = await firebaseAdmin.auth().verifyIdToken(googleIdToken);
         uid = decodedToken.uid;
         provider = "google";
         const googleEmail = decodedToken.email;
@@ -89,7 +89,7 @@ export async function POST(req) {
         // First check if user exists in Firebase Auth
         let userExists = false;
         try {
-          await admin.auth().getUserByEmail(email);
+          await firebaseAdmin.auth().getUserByEmail(email);
           userExists = true;
         } catch (checkError) {
           const checkCode = checkError.code?.toString() || "";

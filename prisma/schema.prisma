@@ -52,7 +52,6 @@ model User {
   isAnonymous Boolean  @default(true)
   isOnboarded Boolean  @default(false)
   role        Role     @default(USER)
-  fcmToken    String[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -86,6 +85,9 @@ model User {
   invitations        Invitation[]
   pairingCodes       PairingCode[]
   permissions        Permission[]
+  fcmTokens          FcmToken[]
+
+  receivedNotifications Notification[] @relation("ReceivedNotifications")
 
   @@map("users")
 }
@@ -121,6 +123,8 @@ model Device {
   heights            Height[]
   photos             Photo[]
   families           Family[]
+  fcmTokens          FcmToken[]
+  notifications      Notification[]      @relation("ReceivedNotifications")
 }
 
 model Token {
@@ -135,6 +139,48 @@ model Token {
   ipAddress String?
 
   @@map("access_tokens")
+}
+
+model FcmToken {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  fcmToken String @unique
+
+  notification   Notification? @relation(fields: [notificationId], references: [id])
+  notificationId String?
+
+  @@map("fcm_tokens")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  type      String?
+  title     String
+  body      String
+  data      Json?
+  image     String?
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  senderFamilyId String?
+  senderFamily   Family? @relation(fields: [senderFamilyId], references: [id], onDelete: SetNull)
+
+  recipientId String
+  recipient   User   @relation("ReceivedNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation("ReceivedNotifications", fields: [deviceId], references: [id], onDelete: SetNull)
+
+  deliveredTo FcmToken[]
+
+  @@map("noticifications")
 }
 
 /**
@@ -671,9 +717,10 @@ model Family {
   isActive Boolean @default(true)
   accepted Boolean @default(false)
 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  pairingCodes PairingCode[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  pairingCodes  PairingCode[]
+  notifications Notification[]
 
   @@map("families")
 }

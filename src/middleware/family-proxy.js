@@ -25,9 +25,21 @@ export async function familyProxy(payload, pathname) {
         );
     }
 
-    // -----------------------------------------------------
-    // CHECK PERMISSION FOR THIS ROUTE
-    // -----------------------------------------------------
+    // ------------------------------------------------------------------
+    // 🔥 ALWAYS ALLOW THIS ROUTE (bypass permission system)
+    // ------------------------------------------------------------------
+    if (pathname === "/api/v1/protected/family/message") {
+        const res = NextResponse.next();
+        res.headers.set("x-auth-type", "family");
+        res.headers.set("x-family-id", familyMember.id);
+        res.headers.set("x-family-name", familyMember.name ?? "");
+        res.headers.set("x-user-id", familyMember.userId);
+        return res;
+    }
+
+    // ------------------------------------------------------------------
+    // NORMAL PERMISSION CHECK FOR ALL OTHER ROUTES
+    // ------------------------------------------------------------------
     const hasPermission = familyMember.permissions.some(
         (perm) => perm.slug === pathname
     );
@@ -39,9 +51,7 @@ export async function familyProxy(payload, pathname) {
         );
     }
 
-    // -----------------------------------------------------
-    // ALLOW ACCESS
-    // -----------------------------------------------------
+    // Allow with headers
     const res = NextResponse.next();
     res.headers.set("x-auth-type", "family");
     res.headers.set("x-family-id", familyMember.id);
