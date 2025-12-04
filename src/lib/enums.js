@@ -23,3 +23,10 @@ export const FoodSource = {
     MANUAL: "MANUAL",
     AI_SCAN: "AI_SCAN",
 };
+
+
+export const notificationTypes = {
+    FAMILY_MESSAGE: "FAMILY_MESSAGE",
+    INJECTION_SHOT: "INJECTION_SHOT",
+    SYSTEM_MESSAGE: "SYSTEM_MESSAGE",
+};
