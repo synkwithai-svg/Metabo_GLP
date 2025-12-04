@@ -1,30 +1,27 @@
-// lib/cloudinary.js
-export async function uploadImageToCloudinary(file) {
-    if (!file) throw new Error("No file provided for upload");
+import { v2 as cloudinary } from "cloudinary";
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
+cloudinary.config({
+    cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY,
+    api_secret: process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET,
+});
 
-    try {
-        const response = await fetch(
-            `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+export function uploadImageToCloudinary(buffer) {
+    return new Promise((resolve, reject) => {
+        const upload = cloudinary.uploader.upload_stream(
             {
-                method: "POST",
-                body: formData,
+                folder: "uploads",
+                resource_type: "image",
+            },
+            (error, result) => {
+                if (error) {
+                    console.error("Cloudinary upload error:", error);
+                    return reject(error);
+                }
+                resolve(result);
             }
         );
 
-        const result = await response.json();
-
-        if (result.secure_url) {
-            return { url: result.secure_url };
-        }
-
-        console.error("Cloudinary upload failed:", result);
-        return null;
-    } catch (error) {
-        console.error("Error uploading to Cloudinary:", error);
-        return null;
-    }
+        upload.end(buffer);
+    });
 }

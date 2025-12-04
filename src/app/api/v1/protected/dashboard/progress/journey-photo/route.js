@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { uploadImageToCloudinary } from "@/lib/cloudinary";
 import { lbsToKg, kgToLbs, ftInToCm } from "@/utils/conversion";
 
+// -------------------- POST --------------------
 export async function POST(req) {
     try {
         const userId = req.headers.get("x-user-id");
@@ -15,32 +15,26 @@ export async function POST(req) {
             );
         }
 
-        const formData = await req.formData();
-        const file = formData.get("file");
-        const note = formData.get("note")?.toString();
+        const body = await req.json();
 
-        // Height
-        const heightCm = parseFloat(formData.get("height_cm")?.toString() || "0") || null;
-        const heightFt = parseInt(formData.get("height_ft")?.toString() || "0") || null;
-        const heightIn = parseInt(formData.get("height_in")?.toString() || "0") || null;
+        const {
+            photoUrl,
+            note,
 
-        // Weight
-        const weightKg = parseFloat(formData.get("weight_kg")?.toString() || "0") || null;
-        const weightLb = parseFloat(formData.get("weight_lb")?.toString() || "0") || null;
+            // Height
+            height_cm,
+            height_ft,
+            height_in,
 
-        if (!file) {
+            // Weight
+            weight_kg,
+            weight_lb,
+        } = body;
+
+        if (!photoUrl) {
             return NextResponse.json(
-                { message: "Image file is required" },
+                { message: "photoUrl is required" },
                 { status: 400 }
-            );
-        }
-
-        const uploadResult = await uploadImageToCloudinary(file);
-
-        if (!uploadResult || !uploadResult.url) {
-            return NextResponse.json(
-                { success: false, message: "Cloudinary upload failed" },
-                { status: 500 }
             );
         }
 
@@ -49,79 +43,75 @@ export async function POST(req) {
             data: {
                 userId,
                 ...(deviceId ? { deviceId } : {}),
-                photoUrl: uploadResult.url,
+                photoUrl,
                 ...(note ? { note } : {}),
             },
         });
 
-        // Save height if provided
-        if (heightCm || (heightFt && heightIn)) {
+        // Save height
+        if (height_cm || (height_ft && height_in)) {
             await db.height.create({
                 data: {
                     userId,
                     ...(deviceId ? { deviceId } : {}),
-                    height_cm: heightCm || ftInToCm(heightFt, heightIn),
-                    height_ft: heightFt || null,
-                    height_in: heightIn || null,
+                    height_cm: height_cm || ftInToCm(height_ft, height_in),
+                    height_ft: height_ft || null,
+                    height_in: height_in || null,
                 },
             });
         }
 
-        // Save weight if provided
-        if (weightKg || weightLb) {
+        // Save weight
+        if (weight_kg || weight_lb) {
             await db.weightlog.create({
                 data: {
                     userId,
                     ...(deviceId ? { deviceId } : {}),
                     date: new Date(),
-                    current_weight_kg: weightKg || lbsToKg(weightLb),
-                    current_weight_lb: weightLb || kgToLbs(weightKg),
+                    current_weight_kg: weight_kg || lbsToKg(weight_lb),
+                    current_weight_lb: weight_lb || kgToLbs(weight_kg),
                 },
             });
         }
 
         return NextResponse.json({ success: true, photo }, { status: 200 });
+
     } catch (error) {
         console.error("Error:", error);
         return NextResponse.json(
-            { success: false, message: "Error adding photo", error: error.message },
+            { success: false, message: "Error adding log", error: error.message },
             { status: 500 }
         );
     }
 }
 
 
+
+// -------------------- GET --------------------
 export async function GET(req) {
     try {
         const userId = req.headers.get("x-user-id");
         const deviceId = req.headers.get("x-user-deviceid");
 
         if (!userId) {
-            return NextResponse.json(
-                { message: "User ID header is required" },
-                { status: 400 }
-            );
+            return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
         }
 
-        // Fetch all photos
         const photos = await db.photo.findMany({
             where: { userId, ...(deviceId ? { deviceId } : {}) },
             orderBy: { createdAt: "asc" },
         });
 
-        // Fetch all heights
         const heights = await db.height.findMany({
             where: { userId, ...(deviceId ? { deviceId } : {}) },
             orderBy: { createdAt: "asc" },
         });
 
-        // Fetch all weights
         const weights = await db.weightlog.findMany({
             where: { userId, ...(deviceId ? { deviceId } : {}) },
             orderBy: { createdAt: "asc" },
         });
 
-        // Combine all entries by date
         const combined = {};
 
         const addToCombined = (date, type, data) => {
@@ -131,7 +121,11 @@ export async function GET(req) {
 
         photos.forEach(photo => {
             const date = photo.createdAt.toISOString().split("T")[0];
-            addToCombined(date, "photos", { id: photo.id, photoUrl: photo.photoUrl, note: photo.note || null });
+            addToCombined(date, "photos", {
+                id: photo.id,
+                photoUrl: photo.photoUrl,
+                note: photo.note || null
+            });
         });
 
         heights.forEach(height => {
@@ -140,7 +134,7 @@ export async function GET(req) {
                 id: height.id,
                 height_cm: height.height_cm,
                 height_ft: height.height_ft,
-                height_in: height.height_in
+                height_in: height.height_in,
             });
         });
 
@@ -149,28 +143,26 @@ export async function GET(req) {
             addToCombined(date, "weights", {
                 id: weight.id,
                 current_weight_kg: weight.current_weight_kg,
-                current_weight_lb: weight.current_weight_lb
+                current_weight_lb: weight.current_weight_lb,
             });
         });
 
-        // Convert combined object to array sorted by date descending
         const data = Object.values(combined).sort((a, b) => b.date.localeCompare(a.date));
 
-        return NextResponse.json({
-            success: true,
-            data,
-        }, { status: 200 });
+        return NextResponse.json({ success: true, data }, { status: 200 });
 
     } catch (error) {
         console.error("Error:", error);
         return NextResponse.json(
-            { success: false, message: "Error fetching daily logs", error: error.message },
+            { success: false, message: "Error fetching logs", error: error.message },
             { status: 500 }
         );
     }
 }
 
 
+
+// -------------------- PATCH --------------------
 export async function PATCH(req) {
     try {
         const userId = req.headers.get("x-user-id");
@@ -180,77 +172,64 @@ export async function PATCH(req) {
             return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
         }
 
-        const formData = await req.formData();
-        const photoId = formData.get("photoId")?.toString();
-        const note = formData.get("note")?.toString();
+        const body = await req.json();
 
-        // Height
-        const heightId = formData.get("heightId")?.toString();
-        const heightCm = parseFloat(formData.get("height_cm")?.toString() || "0") || null;
-        const heightFt = parseInt(formData.get("height_ft")?.toString() || "0") || null;
-        const heightIn = parseInt(formData.get("height_in")?.toString() || "0") || null;
+        const {
+            photoId, photoUrl, note,
+            heightId, height_cm, height_ft, height_in,
+            weightId, weight_kg, weight_lb
+        } = body;
 
-        // Weight
-        const weightId = formData.get("weightId")?.toString();
-        const weightKg = parseFloat(formData.get("weight_kg")?.toString() || "0") || null;
-        const weightLb = parseFloat(formData.get("weight_lb")?.toString() || "0") || null;
-
-        // New file (optional)
-        const file = formData.get("file");
-
-        // Update photo if photoId is provided
         let updatedPhoto = null;
-        if (photoId) {
-            const data = {};
-            if (note) data.note = note;
-            if (file) {
-                const uploadResult = await uploadImageToCloudinary(file);
-                if (!uploadResult || !uploadResult.url) {
-                    return NextResponse.json({ success: false, message: "Cloudinary upload failed" }, { status: 500 });
-                }
-                data.photoUrl = uploadResult.url;
-            }
+        let updatedHeight = null;
+        let updatedWeight = null;
 
+        // Update photo
+        if (photoId) {
             updatedPhoto = await db.photo.update({
                 where: { id: photoId },
-                data,
+                data: {
+                    ...(photoUrl ? { photoUrl } : {}),
+                    ...(note ? { note } : {}),
+                },
             });
         }
 
-        // Update height if heightId is provided
-        let updatedHeight = null;
+        // Update height
         if (heightId) {
             updatedHeight = await db.height.update({
                 where: { id: heightId },
                 data: {
-                    height_cm: heightCm || (heightFt && heightIn ? ftInToCm(heightFt, heightIn) : undefined),
-                    height_ft: heightFt || undefined,
-                    height_in: heightIn || undefined,
+                    height_cm: height_cm || (height_ft && height_in ? ftInToCm(height_ft, height_in) : undefined),
+                    height_ft: height_ft ?? undefined,
+                    height_in: height_in ?? undefined,
                 },
             });
         }
 
-        // Update weight if weightId is provided
-        let updatedWeight = null;
+        // Update weight
         if (weightId) {
             updatedWeight = await db.weightlog.update({
                 where: { id: weightId },
                 data: {
-                    current_weight_kg: weightKg || (weightLb ? lbsToKg(weightLb) : undefined),
-                    current_weight_lb: weightLb || (weightKg ? kgToLbs(weightKg) : undefined),
+                    current_weight_kg: weight_kg || (weight_lb ? lbsToKg(weight_lb) : undefined),
+                    current_weight_lb: weight_lb || (weight_kg ? kgToLbs(weight_kg) : undefined),
                 },
             });
         }
 
-        return NextResponse.json({
-            success: true,
-            photo: updatedPhoto,
-            height: updatedHeight,
-            weight: updatedWeight,
-        }, { status: 200 });
+        return NextResponse.json(
+            {
+                success: true,
+                photo: updatedPhoto,
+                height: updatedHeight,
+                weight: updatedWeight,
+            },
+            { status: 200 }
+        );
 
     } catch (error) {
-        console.error("Error updating daily log:", error);
+        console.error("Error updating log:", error);
         return NextResponse.json(
             { success: false, message: "Error updating daily log", error: error.message },
             { status: 500 }
