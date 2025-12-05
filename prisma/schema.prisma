@@ -39,6 +39,16 @@ enum FoodSource {
   AI_SCAN
 }
 
+enum ReminderCategory {
+  INJECTION_SCHEDULE
+  BREAKFAST
+  LUNCH
+  DINNER
+  WATER
+  STEPS
+  WEIGHT
+}
+
 /**
  * ---------------------- USER & AUTH ----------------------
  */
@@ -57,6 +67,8 @@ model User {
 
   provider    String?
   providerUid String?
+
+  remindersEnabled Boolean @default(true)
 
   members Family[]
 
@@ -87,7 +99,9 @@ model User {
   permissions        Permission[]
   fcmTokens          FcmToken[]
 
-  receivedNotifications Notification[] @relation("ReceivedNotifications")
+  receivedNotifications Notification[]         @relation("ReceivedNotifications")
+  userPlan              UserPlan?
+  notificationReminders NotificationReminder[]
 
   @@map("users")
 }
@@ -116,15 +130,17 @@ model Device {
   sideEffects    SideEffect[]
   sideEffectLogs SideEffectLog[]
 
-  waterLogs          WaterLog[]
-  nextInjectionShots NextInjectionShot[]
-  walkingStepsLogs   WalkingStepsLog[]
-  dashboards         Dashboard[]
-  heights            Height[]
-  photos             Photo[]
-  families           Family[]
-  fcmTokens          FcmToken[]
-  notifications      Notification[]      @relation("ReceivedNotifications")
+  waterLogs             WaterLog[]
+  nextInjectionShots    NextInjectionShot[]
+  walkingStepsLogs      WalkingStepsLog[]
+  dashboards            Dashboard[]
+  heights               Height[]
+  photos                Photo[]
+  families              Family[]
+  fcmTokens             FcmToken[]
+  notifications         Notification[]         @relation("ReceivedNotifications")
+  userPlans             UserPlan[]
+  notificationReminders NotificationReminder[]
 }
 
 model Token {
@@ -139,6 +155,33 @@ model Token {
   ipAddress String?
 
   @@map("access_tokens")
+}
+
+model UserPlan {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  energy   Float?
+  calories Float?
+  protein  Float?
+  carbs    Float?
+  fat      Float?
+  fiber    Float?
+
+  stepsTarget   Int?
+  waterTargetMl Float? @default(3000)
+
+  nextInjectionShotId String?
+  nextInjectionShot   InjectionShot? @relation(fields: [nextInjectionShotId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_plans")
 }
 
 model FcmToken {
@@ -156,6 +199,26 @@ model FcmToken {
   notificationId String?
 
   @@map("fcm_tokens")
+}
+
+model NotificationReminder {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  category  ReminderCategory
+  isEnabled Boolean          @default(true)
+
+  cronTime String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_reminders")
 }
 
 model Notification {
@@ -332,6 +395,7 @@ model InjectionShot {
   isFirstDose Boolean     @default(true)
   CreatedAt   DateTime    @default(now())
   treatments  Treatment[]
+  userPlans   UserPlan[]
 }
 
 /**

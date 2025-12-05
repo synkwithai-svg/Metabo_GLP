@@ -5,6 +5,95 @@ import { db } from "@/lib/db";
 const ozToMl = (oz) => oz * 29.5735;
 const mlToOz = (ml) => ml / 29.5735;
 
+// export async function POST(req) {
+//     try {
+//         const body = await req.json();
+//         const userId = req.headers.get("x-user-id");
+//         const deviceId = req.headers.get("x-user-deviceid") || null;
+//         const { consumedOZ, consumedML } = body;
+
+//         if (!userId) {
+//             return NextResponse.json({ message: "User ID header is required" }, { status: 400 });
+//         }
+
+//         if (!consumedOZ && !consumedML) {
+//             return NextResponse.json({ message: "Provide consumedOZ or consumedML" }, { status: 400 });
+//         }
+
+//         const today = new Date();
+//         today.setUTCHours(0, 0, 0, 0);
+
+//         const endOfToday = new Date();
+//         endOfToday.setUTCHours(23, 59, 59, 999);
+
+//         // Check if water log exists for today
+//         let waterLog = await db.waterLog.findFirst({
+//             where: {
+//                 userId,
+//                 date: {
+//                     gte: today,
+//                     lte: endOfToday,
+//                 },
+//             },
+//         });
+
+//         // Create water log if not exists
+//         if (!waterLog) {
+//             waterLog = await db.waterLog.create({
+//                 data: {
+//                     userId,
+//                     deviceId,
+//                     totalConsumed: 0,
+//                     targets: [],
+//                 },
+//             });
+//         }
+
+//         // Create consumed water entry
+//         const consumedInMl = consumedML ?? (consumedOZ ? ozToMl(consumedOZ) : 0);
+//         const consumedInOz = consumedOZ ?? (consumedML ? mlToOz(consumedML) : null);
+
+//         await db.consumedWater.create({
+//             data: {
+//                 consumedAt: new Date(),
+//                 consumedML: consumedInMl,
+//                 consumedOZ: consumedInOz,
+//                 waterLogId: waterLog.id,
+//             },
+//         });
+
+//         // Recalculate totalConsumed
+//         const total = await db.consumedWater.aggregate({
+//             _sum: { consumedML: true },
+//             where: { waterLogId: waterLog.id },
+//         });
+
+//         const finalTotal = total._sum.consumedML ?? 0;
+
+//         await db.waterLog.update({
+//             where: { id: waterLog.id },
+//             data: { totalConsumed: finalTotal },
+//         });
+
+//         return NextResponse.json({
+//             success: true,
+//             message: "Consumed water logged",
+//             consumedML: consumedInMl,
+//             consumedOZ: consumedInOz,
+//             totalConsumed: finalTotal,
+//         });
+
+//     } catch (error) {
+//         console.error("Consumed API Error:", error);
+//         return NextResponse.json(
+//             { success: false, message: "Internal server error", error: { name: error.name, message: error.message } },
+//             { status: 500 }
+//         );
+//     }
+// }
+
+
+
 export async function POST(req) {
     try {
         const body = await req.json();
@@ -37,19 +126,26 @@ export async function POST(req) {
             },
         });
 
-        // Create water log if not exists
+        // If water log does not exist, create it
         if (!waterLog) {
+            // Fetch user's plan to get target
+            const userPlan = await db.userPlan.findUnique({
+                where: { userId },
+            });
+
+            const targetInMl = userPlan?.waterTargetMl ?? 3000; // fallback default
+
             waterLog = await db.waterLog.create({
                 data: {
                     userId,
                     deviceId,
                     totalConsumed: 0,
                     targets: [],
+                    targetInMl,
                 },
             });
         }
 
-        // Create consumed water entry
         const consumedInMl = consumedML ?? (consumedOZ ? ozToMl(consumedOZ) : 0);
         const consumedInOz = consumedOZ ?? (consumedML ? mlToOz(consumedML) : null);
 
@@ -62,7 +158,7 @@ export async function POST(req) {
             },
         });
 
-        // Recalculate totalConsumed
+        // Recalculate total consumed
         const total = await db.consumedWater.aggregate({
             _sum: { consumedML: true },
             where: { waterLogId: waterLog.id },
@@ -81,6 +177,7 @@ export async function POST(req) {
             consumedML: consumedInMl,
             consumedOZ: consumedInOz,
             totalConsumed: finalTotal,
+            targetInMl: waterLog.targetInMl,
         });
 
     } catch (error) {
@@ -91,9 +188,6 @@ export async function POST(req) {
         );
     }
 }
-
-
-
 
 
 export async function GET(req) {
