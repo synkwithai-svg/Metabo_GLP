@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { notificationCategories } from "@/lib/enums";
 
 export async function GET(req) {
     try {
@@ -76,9 +77,6 @@ export async function GET(req) {
     }
 }
 
-
-
-
 export async function PUT(req) {
     try {
         const userId = req.headers.get("x-user-id");
@@ -89,7 +87,26 @@ export async function PUT(req) {
         }
 
         const body = await req.json();
-        const { category, isEnabled, cronTime, remindersEnabled } = body;
+        const { remindersEnabled, category, isEnabled, cronTime } = body;
+
+        // ✅ Validate remindersEnabled
+        if (remindersEnabled !== undefined && typeof remindersEnabled !== "boolean") {
+            return NextResponse.json({ error: "'remindersEnabled' must be true or false" }, { status: 400 });
+        }
+
+        // ✅ Validate category
+        if (category && !Object.values(notificationCategories).includes(category)) {
+            return NextResponse.json({ error: `'category' must be one of ${Object.values(notificationCategories).join(", ")}` }, { status: 400 });
+        }
+
+        // ✅ Validate cronTime for categories that require it
+        if (
+            category &&
+            ["BREAKFAST", "LUNCH", "DINNER"].includes(category) &&
+            !cronTime
+        ) {
+            return NextResponse.json({ error: `'cronTime' is required for category ${category}` }, { status: 400 });
+        }
 
         // 1️⃣ Update global remindersEnabled if provided
         let updatedUser = null;
@@ -111,7 +128,7 @@ export async function PUT(req) {
                 updatedReminder = await db.notificationReminder.update({
                     where: { id: existing.id },
                     data: {
-                        isEnabled,
+                        isEnabled: isEnabled ?? true,
                         cronTime: cronTime ?? null,
                     },
                 });
@@ -119,7 +136,7 @@ export async function PUT(req) {
                 updatedReminder = await db.notificationReminder.create({
                     data: {
                         userId,
-                        deviceId: deviceId ?? null,
+                        deviceId,
                         category,
                         isEnabled: isEnabled ?? true,
                         cronTime: cronTime ?? null,
@@ -130,7 +147,7 @@ export async function PUT(req) {
 
         return NextResponse.json({
             success: true,
-            message: "Remainder updated",
+            message: "Reminder updated",
             updatedUser,
             updatedReminder,
         });

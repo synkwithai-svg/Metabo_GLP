@@ -102,6 +102,10 @@ model User {
   receivedNotifications Notification[]         @relation("ReceivedNotifications")
   userPlan              UserPlan?
   notificationReminders NotificationReminder[]
+  subscriptions         Subscription[]
+  chatSessions          ChatSession[]
+  coachConfig           CoachConfig?
+  payments              Payment[]
 
   @@map("users")
 }
@@ -141,6 +145,8 @@ model Device {
   notifications         Notification[]         @relation("ReceivedNotifications")
   userPlans             UserPlan[]
   notificationReminders NotificationReminder[]
+  subscriptions         Subscription[]
+  payments              Payment[]
 }
 
 model Token {
@@ -767,8 +773,9 @@ model Photo {
 model Family {
   id String @id @default(uuid())
 
-  name String
-  dob  DateTime?
+  name         String
+  dob          DateTime?
+  relationship String?
 
   permissions Permission[]
 
@@ -839,4 +846,102 @@ model Permission {
 
   invitations Invitation[]
   families    Family[]
+}
+
+model Subscription {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  plan          String    @default("PREMIUM")
+  tokensAllowed Int       @default(5000)
+  tokensUsed    Int       @default(0)
+  renewsAt      DateTime? // subscription renewal date
+  isActive      Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chatSessions ChatSession[]
+  payments     Payment[]
+
+  @@map("subscriptions")
+}
+
+model ChatSession {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title      String?
+  tokensUsed Int     @default(0)
+
+  messages ChatMessage[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  subscriptionId String?
+
+  @@map("coach_chat_sessions")
+}
+
+model ChatMessage {
+  id String @id @default(uuid())
+
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  isUser  Boolean // true = User message, false = AI message
+  content String // Full text of the message
+
+  tokenCount Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@map("coach_chat_messages")
+}
+
+model CoachConfig {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tone           String? // "friendly", "professional", etc.
+  goalsEnabled   Boolean @default(true)
+  nutritionFocus Boolean @default(true)
+  exerciseFocus  Boolean @default(true)
+  mentalFocus    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("coach_config")
+}
+
+model Payment {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  SubscriptionId String?
+  Subscription   Subscription? @relation(fields: [SubscriptionId], references: [id])
+
+  amount   Float
+  currency String
+  notes    String?
+
+  status String? @default("PENDING")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
 }

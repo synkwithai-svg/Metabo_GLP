@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 export async function POST(req) {
     try {
         const body = await req.json();
-        const { name, dob, token } = body;
+        const { name, dob, token, relationship } = body;
 
         if (!name) {
             return NextResponse.json(
@@ -60,6 +60,7 @@ export async function POST(req) {
                 name,
                 dob: new Date(dob),
                 userId: invitation.invitedById,
+                relationship,
                 permissions: {
                     connect: invitation.permissions.map((p) => ({ id: p.id })),
                 },

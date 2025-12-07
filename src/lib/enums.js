@@ -30,3 +30,13 @@ export const notificationTypes = {
     INJECTION_SHOT: "INJECTION_SHOT",
     SYSTEM_MESSAGE: "SYSTEM_MESSAGE",
 };
+
+export const notificationCategories = {
+    INJECTION_SCHEDULE: "INJECTION_SCHEDULE",
+    BREAKFAST: "BREAKFAST",
+    LUNCH: "LUNCH",
+    DINNER: "DINNER",
+    WATER: "WATER",
+    STEPS: "STEPS",
+    WEIGHT: "WEIGHT",
+};
