@@ -29,6 +29,7 @@ export const notificationTypes = {
     FAMILY_MESSAGE: "FAMILY_MESSAGE",
     INJECTION_SHOT: "INJECTION_SHOT",
     SYSTEM_MESSAGE: "SYSTEM_MESSAGE",
+    FAMILY_PAIRING_ACCEPTED:"FAMILY_PAIRING_ACCEPTED",
 };
 
 export const notificationCategories = {

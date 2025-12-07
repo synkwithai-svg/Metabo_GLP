@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { generateAccessToken, generateRefreshToken } from "@/lib/token";
 
+import { notificationTypes } from "@/lib/enums";
+import { sendPushNotification } from "@/lib/services/sendPushNotification";
+
 export async function POST(req) {
     try {
         const body = await req.json();
@@ -14,7 +17,7 @@ export async function POST(req) {
             );
         }
 
-        // Find the pairing code
+        // Find pairing code
         const pairing = await db.pairingCode.findFirst({
             where: { code },
             include: { family: true },
@@ -44,6 +47,7 @@ export async function POST(req) {
         const familyId = pairing.familyId;
         const invitedById = pairing.userId;
 
+        // Get inviter deviceId
         const device = await db.device.findFirst({
             where: { userId: invitedById },
             orderBy: { createdAt: "desc" },
@@ -51,28 +55,55 @@ export async function POST(req) {
         });
         const deviceId = device?.id || null;
 
-
-        // Update the family as accepted
+        // Mark family as accepted
         await db.family.update({
             where: { id: familyId },
             data: { accepted: true },
         });
 
-        // // Delete all invitations of the user (invitedById)
-        // await db.invitation.deleteMany({
-        //     where: { invitedById },
-        // });
-
-        // // Delete the pairing code
-        // await db.pairingCode.delete({
-        //     where: { id: pairing.id },
-        // });
-
-        // ------------------------------
-        // GENERATE FAMILY TOKENS
-        // ------------------------------
+        // Generate tokens
         const accessToken = await generateAccessToken(invitedById, deviceId, familyId);
         const refreshToken = await generateRefreshToken(invitedById, deviceId, familyId);
+
+        // --------------------------------------------------
+        // 🔔 SILENT PUSH NOTIFICATION TO INVITER
+        // --------------------------------------------------
+
+        // Find recipient user + tokens
+        const inviter = await db.user.findUnique({
+            where: { id: invitedById },
+            include: { fcmTokens: true },
+        });
+
+        if (inviter && inviter.fcmTokens.length > 0) {
+
+            // Create notification record
+            const notification = await db.notification.create({
+                data: {
+                    type: notificationTypes.FAMILY_PAIRING_ACCEPTED,
+                    title: "Family Pairing Successful",
+                    body: "Your family pairing request has been accepted.",
+                    recipientId: invitedById,
+                    senderFamilyId: familyId,
+                    deliveredTo: {
+                        connect: inviter.fcmTokens.map((tk) => ({ id: tk.id })),
+                    },
+                },
+            });
+
+            const fcmTokens = inviter.fcmTokens.map((t) => t.fcmToken);
+
+            // Send *silent* push
+            await sendPushNotification(fcmTokens, {
+                title: "Family Pairing Successful",
+                body: "Your family pairing request has been accepted.",
+                data: {
+                    type: notificationTypes.FAMILY_PAIRING_ACCEPTED,
+                    notificationId: notification.id,
+                    familyId,
+                },
+            });
+        }
 
         return NextResponse.json({
             success: true,
@@ -80,8 +111,8 @@ export async function POST(req) {
             data: {
                 accessToken,
                 refreshToken,
-                familyId
-            }
+                familyId,
+            },
         });
 
     } catch (error) {
