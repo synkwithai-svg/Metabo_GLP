@@ -16,16 +16,14 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get("page") || "1", 10);
         const limit = parseInt(searchParams.get("limit") || "30", 10);
-
         const skip = (page - 1) * limit;
 
-        // Fetch paginated log items
+        // Fetch paginated log items (exclude quickAddId)
         const recentLogs = await db.foodLogItem.findMany({
             where: { log: { userId } },
             select: {
                 foodId: true,
                 userFoodId: true,
-                quickAddId: true,
                 log: { select: { loggedAt: true } },
             },
             orderBy: { log: { loggedAt: "desc" } },
@@ -36,13 +34,11 @@ export async function GET(req) {
         // Collect unique IDs
         const foodIds = [...new Set(recentLogs.map(i => i.foodId).filter(Boolean))];
         const userFoodIds = [...new Set(recentLogs.map(i => i.userFoodId).filter(Boolean))];
-        const quickAddIds = [...new Set(recentLogs.map(i => i.quickAddId).filter(Boolean))];
 
         // Fetch related models
-        const [foods, userFoods, quickAdds] = await Promise.all([
+        const [foods, userFoods] = await Promise.all([
             db.food.findMany({ where: { id: { in: foodIds } } }),
             db.userFood.findMany({ where: { id: { in: userFoodIds } } }),
-            db.quickAdd.findMany({ where: { id: { in: quickAddIds } } }),
         ]);
 
         // Format response
@@ -74,18 +70,6 @@ export async function GET(req) {
                     });
                 }
             }
-
-            if (log.quickAddId) {
-                const item = quickAdds.find(f => f.id === log.quickAddId);
-                if (item) {
-                    formatted.push({
-                        type: "quickAdd",
-                        id: item.id,
-                        loggedAt,
-                        data: item,
-                    });
-                }
-            }
         });
 
         // Deduplication
@@ -108,7 +92,6 @@ export async function GET(req) {
             {
                 success: true,
                 data: result,
-
                 meta: {
                     page,
                     limit,
