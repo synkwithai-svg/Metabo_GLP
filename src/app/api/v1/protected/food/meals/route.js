@@ -72,6 +72,7 @@ export async function POST(req) {
   }
 }
 
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -87,52 +88,138 @@ export async function GET(req) {
     }
 
     // ---------------------------
-    // EXTRACT SEARCH PARAMS
+    // QUERY PARAMS
     // ---------------------------
+    const type = searchParams.get("type") || "all"; // recent or all
     const mealType = searchParams.get("mealType") || undefined;
     const date = searchParams.get("date") || undefined;
     const from = searchParams.get("from") || undefined;
     const to = searchParams.get("to") || undefined;
 
     // ---------------------------
-    // BUILD FILTERS
+    // PAGINATION (only for normal/all)
+    // ---------------------------
+    const page = Number(searchParams.get("page") || 1);
+    const limit = Number(searchParams.get("limit") || 20);
+    const skip = (page - 1) * limit;
+
+    // ---------------------------
+    // WHERE CLAUSE
     // ---------------------------
     const whereClause = {
       userId,
-      ...(mealType && { mealType }),
       ...(deviceId && { deviceId }),
-      ...(date && { date }),
+      ...(mealType && { mealType }),
+      ...(!from && !to && date && { date }),
       ...(from &&
         to && {
-        date: {
-          gte: from,
-          lte: to,
-        },
+        date: { gte: from, lte: to },
       }),
     };
 
     // ---------------------------
     // FETCH MEALS
     // ---------------------------
-    const meals = await db.meal.findMany({
-      where: whereClause,
-      include: { foods: true },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    let meals;
+    let totalItems = 0;
 
-    return NextResponse.json({
-      success: "true",
-      message: "Meals retrieved successfully",
-      filters_used: whereClause,
-      data: meals,
-    });
-  } catch (error) {
-    console.error(error);
+    if (type === "recent") {
+      // Get the most recent meal only
+      meals = await db.meal.findMany({
+        where: whereClause,
+        include: {
+          foods: {
+            include: { food: true, userFood: true, quickAdd: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      });
+      totalItems = meals.length;
+    } else {
+      // Normal paginated fetch
+      totalItems = await db.meal.count({ where: whereClause });
+
+      meals = await db.meal.findMany({
+        where: whereClause,
+        include: {
+          foods: {
+            include: { food: true, userFood: true, quickAdd: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      });
+    }
+
+    // ---------------------------
+    // FORMAT OUTPUT
+    // ---------------------------
+    const formattedMeals = meals.map((meal) => ({
+      ...meal,
+      foods: meal.foods
+        .map((item) => {
+          if (item.food) {
+            return {
+              id: item.id,
+              mealId: item.mealId,
+              foodId: item.foodId,
+              quantity: item.quantity,
+              name: item.food.name,
+              type: "food",
+              food: item.food,
+            };
+          }
+          if (item.userFood) {
+            return {
+              id: item.id,
+              mealId: item.mealId,
+              userFoodId: item.userFoodId,
+              quantity: item.quantity,
+              name: item.userFood.name,
+              type: "userFood",
+              userFood: item.userFood,
+            };
+          }
+          if (item.quickAdd) {
+            return {
+              id: item.id,
+              mealId: item.mealId,
+              quickAddId: item.quickAddId,
+              quantity: item.quantity,
+              name: "Quick Add",
+              type: "quickAdd",
+              quickAdd: item.quickAdd,
+            };
+          }
+          return null; // skip nulls
+        })
+        .filter(Boolean),
+    }));
+
     return NextResponse.json(
       {
-        success: "false",
+        success: true,
+        message: "Meals retrieved successfully",
+        data: formattedMeals,
+        meta: {
+          page,
+          limit,
+          totalItems,
+          totalPages: type === "recent" ? 1 : Math.ceil(totalItems / limit),
+          count: formattedMeals.length,
+          filters_used: whereClause,
+          type,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Meal fetch error:", error);
+    return NextResponse.json(
+      {
+        success: false,
         message: "Failed to retrieve meals",
         error: error.message,
       },
@@ -140,4 +227,3 @@ export async function GET(req) {
     );
   }
 }
-

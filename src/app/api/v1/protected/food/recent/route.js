@@ -12,61 +12,47 @@ export async function GET(req) {
             );
         }
 
-        // Get recent FoodLogItems with food, userFood, quickAdd relations
+        // ---- PAGINATION ---- //
+        const { searchParams } = new URL(req.url);
+        const page = parseInt(searchParams.get("page") || "1", 10);
+        const limit = parseInt(searchParams.get("limit") || "30", 10);
+
+        const skip = (page - 1) * limit;
+
+        // Fetch paginated log items
         const recentLogs = await db.foodLogItem.findMany({
-            where: {
-                log: { userId },
-            },
+            where: { log: { userId } },
             select: {
                 foodId: true,
                 userFoodId: true,
                 quickAddId: true,
-                log: {
-                    select: {
-                        loggedAt: true,
-                    },
-                },
+                log: { select: { loggedAt: true } },
             },
-            orderBy: {
-                log: { loggedAt: "desc" },
-            },
-            take: 30, // recent 30 unique entries, adjust as needed
+            orderBy: { log: { loggedAt: "desc" } },
+            skip,
+            take: limit,
         });
 
         // Collect unique IDs
-        const foodIds = [
-            ...new Set(recentLogs.map((i) => i.foodId).filter(Boolean)),
-        ];
+        const foodIds = [...new Set(recentLogs.map(i => i.foodId).filter(Boolean))];
+        const userFoodIds = [...new Set(recentLogs.map(i => i.userFoodId).filter(Boolean))];
+        const quickAddIds = [...new Set(recentLogs.map(i => i.quickAddId).filter(Boolean))];
 
-        const userFoodIds = [
-            ...new Set(recentLogs.map((i) => i.userFoodId).filter(Boolean)),
-        ];
+        // Fetch related models
+        const [foods, userFoods, quickAdds] = await Promise.all([
+            db.food.findMany({ where: { id: { in: foodIds } } }),
+            db.userFood.findMany({ where: { id: { in: userFoodIds } } }),
+            db.quickAdd.findMany({ where: { id: { in: quickAddIds } } }),
+        ]);
 
-        const quickAddIds = [
-            ...new Set(recentLogs.map((i) => i.quickAddId).filter(Boolean)),
-        ];
-
-        // Fetch actual data
-        const foods = await db.food.findMany({
-            where: { id: { in: foodIds } },
-        });
-
-        const userFoods = await db.userFood.findMany({
-            where: { id: { in: userFoodIds } },
-        });
-
-        const quickAdds = await db.quickAdd.findMany({
-            where: { id: { in: quickAddIds } },
-        });
-
-        // Attach loggedAt to each item
+        // Format response
         const formatted = [];
 
         recentLogs.forEach((log) => {
             const loggedAt = log.log.loggedAt;
 
             if (log.foodId) {
-                const item = foods.find((f) => f.id === log.foodId);
+                const item = foods.find(f => f.id === log.foodId);
                 if (item) {
                     formatted.push({
                         type: "food",
@@ -78,7 +64,7 @@ export async function GET(req) {
             }
 
             if (log.userFoodId) {
-                const item = userFoods.find((f) => f.id === log.userFoodId);
+                const item = userFoods.find(f => f.id === log.userFoodId);
                 if (item) {
                     formatted.push({
                         type: "userFood",
@@ -90,7 +76,7 @@ export async function GET(req) {
             }
 
             if (log.quickAddId) {
-                const item = quickAdds.find((f) => f.id === log.quickAddId);
+                const item = quickAdds.find(f => f.id === log.quickAddId);
                 if (item) {
                     formatted.push({
                         type: "quickAdd",
@@ -102,28 +88,38 @@ export async function GET(req) {
             }
         });
 
-        // Deduplicate by ID + type → keep MOST recent only
+        // Deduplication
         const uniqueMap = new Map();
-        formatted.forEach((item) => {
+        formatted.forEach(item => {
             const key = `${item.type}-${item.id}`;
-            if (!uniqueMap.has(key)) {
-                uniqueMap.set(key, item);
-            }
+            if (!uniqueMap.has(key)) uniqueMap.set(key, item);
         });
 
-        // Convert to list + sort by recent date
         const result = Array.from(uniqueMap.values()).sort(
             (a, b) => new Date(b.loggedAt) - new Date(a.loggedAt)
         );
 
+        // Count total items for meta
+        const totalItems = await db.foodLogItem.count({
+            where: { log: { userId } },
+        });
+
         return NextResponse.json(
             {
                 success: true,
-                total: result.length,
                 data: result,
+
+                meta: {
+                    page,
+                    limit,
+                    totalItems,
+                    totalPages: Math.ceil(totalItems / limit),
+                    count: result.length,
+                },
             },
             { status: 200 }
         );
+
     } catch (error) {
         console.error("Error fetching recent foods:", error);
         return NextResponse.json(

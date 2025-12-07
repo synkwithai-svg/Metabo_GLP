@@ -12,7 +12,14 @@ export async function GET(req) {
             );
         }
 
-        // 1️⃣ Get frequency count for Food
+        // ---- PAGINATION ---- //
+        const { searchParams } = new URL(req.url);
+        const page = parseInt(searchParams.get("page") || "1", 10);
+        const limit = parseInt(searchParams.get("limit") || "20", 10);
+
+        const skip = (page - 1) * limit;
+
+        // ---- 1️⃣ Frequency count for Food ---- //
         const foodCounts = await db.foodLogItem.groupBy({
             by: ["foodId"],
             where: {
@@ -22,7 +29,7 @@ export async function GET(req) {
             _count: { foodId: true },
         });
 
-        // 2️⃣ Get frequency count for UserFood
+        // ---- 2️⃣ Frequency count for UserFood ---- //
         const userFoodCounts = await db.foodLogItem.groupBy({
             by: ["userFoodId"],
             where: {
@@ -32,19 +39,16 @@ export async function GET(req) {
             _count: { userFoodId: true },
         });
 
-        // Fetch actual food data
         const foodIds = foodCounts.map((f) => f.foodId);
         const userFoodIds = userFoodCounts.map((u) => u.userFoodId);
 
-        const foods = await db.food.findMany({
-            where: { id: { in: foodIds } },
-        });
+        // ---- Fetch actual food data ---- //
+        const [foods, userFoods] = await Promise.all([
+            db.food.findMany({ where: { id: { in: foodIds } } }),
+            db.userFood.findMany({ where: { id: { in: userFoodIds } } }),
+        ]);
 
-        const userFoods = await db.userFood.findMany({
-            where: { id: { in: userFoodIds } },
-        });
-
-        // Merge with frequency counts
+        // ---- Merge + Attach Frequency ---- //
         const formattedFoods = foodCounts.map((f) => ({
             id: f.foodId,
             type: "food",
@@ -52,26 +56,36 @@ export async function GET(req) {
             data: foods.find((x) => x.id === f.foodId) || null,
         }));
 
-        const formattedUserFoods = userFoodCounts.map((f) => ({
-            id: f.userFoodId,
+        const formattedUserFoods = userFoodCounts.map((u) => ({
+            id: u.userFoodId,
             type: "userFood",
-            count: f._count.userFoodId,
-            data: userFoods.find((x) => x.id === f.userFoodId) || null,
+            count: u._count.userFoodId,
+            data: userFoods.find((x) => x.id === u.userFoodId) || null,
         }));
 
-        // 3️⃣ Combine → sort by highest frequency
+        // ---- 3️⃣ Combine + Sort ---- //
         const combined = [...formattedFoods, ...formattedUserFoods].sort(
             (a, b) => b.count - a.count
         );
 
+        // ---- Pagination on combined data ---- //
+        const paginated = combined.slice(skip, skip + limit);
+
         return NextResponse.json(
             {
                 success: true,
-                total: combined.length,
-                data: combined,
+                data: paginated,
+                meta: {
+                    page,
+                    limit,
+                    totalItems: combined.length,
+                    totalPages: Math.ceil(combined.length / limit),
+                    count: paginated.length,
+                },
             },
             { status: 200 }
         );
+
     } catch (error) {
         console.error("Error fetching frequent foods:", error);
         return NextResponse.json(
