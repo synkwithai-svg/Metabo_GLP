@@ -47,9 +47,7 @@ export async function GET(req) {
         const userFoodWhere = { userId, ...(deviceId && { deviceId }), ...baseFilters };
         const mealWhere = { userId, ...(deviceId && { deviceId }), ...baseFilters };
 
-        // -------------------------------------
-        // FETCH WITH MACROS
-        // -------------------------------------
+        // Fetch all data including macros and serving info
         const [foods, userFoods, meals] = await Promise.all([
             db.food.findMany({
                 where: foodWhere,
@@ -76,17 +74,13 @@ export async function GET(req) {
             }),
         ]);
 
-        // -----------------------------------------------------
-        // HELPER: EXTRACT CALORIES FROM ANY MACROS[]
-        // -----------------------------------------------------
+        // Helper for calories
         const getCalories = (macros) => {
             if (!macros || macros.length === 0) return 0;
             return macros[0]?.calories || 0;
         };
 
-        // -----------------------------------------------------
-        // FORMAT MEALS WITH CALORIES
-        // -----------------------------------------------------
+        // Format meals
         const formattedMeals = meals.map((meal) => {
             let mealTotalCalories = 0;
 
@@ -97,9 +91,8 @@ export async function GET(req) {
                         mealTotalCalories += cal;
 
                         return {
-                            id: item.food.id,
+                            ...item.food,
                             type: "food",
-                            name: item.food.name,
                             quantity: item.quantity,
                             calories: cal,
                         };
@@ -110,9 +103,8 @@ export async function GET(req) {
                         mealTotalCalories += cal;
 
                         return {
-                            id: item.userFood.id,
+                            ...item.userFood,
                             type: "userFood",
-                            name: item.userFood.name,
                             quantity: item.quantity,
                             calories: cal,
                         };
@@ -123,7 +115,7 @@ export async function GET(req) {
                         mealTotalCalories += cal;
 
                         return {
-                            id: item.quickAdd.id,
+                            ...item.quickAdd,
                             type: "quickAdd",
                             name: "Quick Add",
                             quantity: item.quantity,
@@ -147,24 +139,16 @@ export async function GET(req) {
             };
         });
 
-        // -----------------------------------------------------
-        // MERGE DATA WITH CALORIES INCLUDED
-        // -----------------------------------------------------
+        // Merge all
         const mergedData = [
             ...foods.map((f) => ({
-                id: f.id,
+                ...f,
                 type: "food",
-                name: f.name,
-                createdAt: f.createdAt,
-                updatedAt: f.updatedAt,
                 calories: getCalories(f.macros),
             })),
             ...userFoods.map((uf) => ({
-                id: uf.id,
+                ...uf,
                 type: "userFood",
-                name: uf.name,
-                createdAt: uf.createdAt,
-                updatedAt: uf.updatedAt,
                 calories: getCalories(uf.macros),
             })),
             ...formattedMeals,
