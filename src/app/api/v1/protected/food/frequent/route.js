@@ -16,7 +16,6 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get("page") || "1", 10);
         const limit = parseInt(searchParams.get("limit") || "20", 10);
-
         const skip = (page - 1) * limit;
 
         // ---- 1️⃣ Frequency count for Food ---- //
@@ -42,33 +41,56 @@ export async function GET(req) {
         const foodIds = foodCounts.map((f) => f.foodId);
         const userFoodIds = userFoodCounts.map((u) => u.userFoodId);
 
-        // ---- Fetch actual food data ---- //
+        // ---- Fetch data WITH MACROS ---- //
         const [foods, userFoods] = await Promise.all([
-            db.food.findMany({ where: { id: { in: foodIds } } }),
-            db.userFood.findMany({ where: { id: { in: userFoodIds } } }),
+            db.food.findMany({
+                where: { id: { in: foodIds } },
+                include: { macros: true },
+            }),
+            db.userFood.findMany({
+                where: { id: { in: userFoodIds } },
+                include: { macros: true },
+            }),
         ]);
 
-        // ---- Merge + Attach Frequency ---- //
-        const formattedFoods = foodCounts.map((f) => ({
-            id: f.foodId,
-            type: "food",
-            count: f._count.foodId,
-            data: foods.find((x) => x.id === f.foodId) || null,
-        }));
+        // ---- Extract calories helper ---- //
+        const getCalories = (macros) => {
+            if (!macros || macros.length === 0) return 0;
+            return macros[0]?.calories || 0;
+        };
 
-        const formattedUserFoods = userFoodCounts.map((u) => ({
-            id: u.userFoodId,
-            type: "userFood",
-            count: u._count.userFoodId,
-            data: userFoods.find((x) => x.id === u.userFoodId) || null,
-        }));
+        // ---- Format food items ---- //
+        const formattedFoods = foodCounts.map((f) => {
+            const data = foods.find((x) => x.id === f.foodId) || null;
 
-        // ---- 3️⃣ Combine + Sort ---- //
+            return {
+                id: f.foodId,
+                type: "food",
+                count: f._count.foodId,
+                calories: data ? getCalories(data.macros) : 0,
+                data,
+            };
+        });
+
+        // ---- Format user foods ---- //
+        const formattedUserFoods = userFoodCounts.map((u) => {
+            const data = userFoods.find((x) => x.id === u.userFoodId) || null;
+
+            return {
+                id: u.userFoodId,
+                type: "userFood",
+                count: u._count.userFoodId,
+                calories: data ? getCalories(data.macros) : 0,
+                data,
+            };
+        });
+
+        // ---- Combine + Sort by frequency ---- //
         const combined = [...formattedFoods, ...formattedUserFoods].sort(
             (a, b) => b.count - a.count
         );
 
-        // ---- Pagination on combined data ---- //
+        // ---- Pagination ---- //
         const paginated = combined.slice(skip, skip + limit);
 
         return NextResponse.json(

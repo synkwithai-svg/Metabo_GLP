@@ -35,13 +35,25 @@ export async function GET(req) {
         const foodIds = [...new Set(recentLogs.map(i => i.foodId).filter(Boolean))];
         const userFoodIds = [...new Set(recentLogs.map(i => i.userFoodId).filter(Boolean))];
 
-        // Fetch related models
+        // Fetch related models **WITH MACROS**
         const [foods, userFoods] = await Promise.all([
-            db.food.findMany({ where: { id: { in: foodIds } } }),
-            db.userFood.findMany({ where: { id: { in: userFoodIds } } }),
+            db.food.findMany({
+                where: { id: { in: foodIds } },
+                include: { macros: true },
+            }),
+            db.userFood.findMany({
+                where: { id: { in: userFoodIds } },
+                include: { macros: true },
+            }),
         ]);
 
-        // Format response
+        // ---- HELPER: Extract Calories ---- //
+        const getCalories = (macros) => {
+            if (!macros || macros.length === 0) return 0;
+            return macros[0]?.calories || 0;
+        };
+
+        // ---- FORMAT RESPONSE ---- //
         const formatted = [];
 
         recentLogs.forEach((log) => {
@@ -54,6 +66,7 @@ export async function GET(req) {
                         type: "food",
                         id: item.id,
                         loggedAt,
+                        calories: getCalories(item.macros),
                         data: item,
                     });
                 }
@@ -66,13 +79,14 @@ export async function GET(req) {
                         type: "userFood",
                         id: item.id,
                         loggedAt,
+                        calories: getCalories(item.macros),
                         data: item,
                     });
                 }
             }
         });
 
-        // Deduplication
+        // ---- DEDUPLICATION ---- //
         const uniqueMap = new Map();
         formatted.forEach(item => {
             const key = `${item.type}-${item.id}`;
@@ -83,7 +97,7 @@ export async function GET(req) {
             (a, b) => new Date(b.loggedAt) - new Date(a.loggedAt)
         );
 
-        // Count total items for meta
+        // ---- TOTAL ITEMS ---- //
         const totalItems = await db.foodLogItem.count({
             where: { log: { userId } },
         });

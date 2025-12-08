@@ -16,16 +16,10 @@ export async function GET(req) {
             );
         }
 
-        // ---------------------------
-        // PAGINATION
-        // ---------------------------
         const page = Number(searchParams.get("page") || 1);
         const limit = Number(searchParams.get("limit") || 20);
         const skip = (page - 1) * limit;
 
-        // ---------------------------
-        // SEARCH & DATE FILTER
-        // ---------------------------
         const search = searchParams.get("search") || undefined;
         const dateStr = searchParams.get("date") || undefined;
         const fromStr = searchParams.get("from") || undefined;
@@ -44,38 +38,27 @@ export async function GET(req) {
             };
         }
 
-        // ---------------------------
-        // WHERE CLAUSES
-        // ---------------------------
-        const foodWhere = {
+        const baseFilters = {
             ...(search && { name: { contains: search, mode: "insensitive" } }),
             ...(dateFilter.gte && { createdAt: dateFilter }),
         };
 
-        const userFoodWhere = {
-            userId,
-            ...(deviceId && { deviceId }),
-            ...(search && { name: { contains: search, mode: "insensitive" } }),
-            ...(dateFilter.gte && { createdAt: dateFilter }),
-        };
+        const foodWhere = { ...baseFilters };
+        const userFoodWhere = { userId, ...(deviceId && { deviceId }), ...baseFilters };
+        const mealWhere = { userId, ...(deviceId && { deviceId }), ...baseFilters };
 
-        const mealWhere = {
-            userId,
-            ...(deviceId && { deviceId }),
-            ...(search && { name: { contains: search, mode: "insensitive" } }),
-            ...(dateFilter.gte && { createdAt: dateFilter }),
-        };
-
-        // ---------------------------
-        // FETCH DATA
-        // ---------------------------
+        // -------------------------------------
+        // FETCH WITH MACROS
+        // -------------------------------------
         const [foods, userFoods, meals] = await Promise.all([
             db.food.findMany({
                 where: foodWhere,
+                include: { macros: true },
                 orderBy: { createdAt: "desc" },
             }),
             db.userFood.findMany({
                 where: userFoodWhere,
+                include: { macros: true },
                 orderBy: { createdAt: "desc" },
             }),
             db.meal.findMany({
@@ -84,68 +67,109 @@ export async function GET(req) {
                 include: {
                     foods: {
                         include: {
-                            food: true,
-                            userFood: true,
-                            quickAdd: true,
+                            food: { include: { macros: true } },
+                            userFood: { include: { macros: true } },
+                            quickAdd: { include: { macros: true } },
                         },
                     },
                 },
             }),
         ]);
 
-        // ---------------------------
-        // FORMAT MEALS
-        // ---------------------------
-        const formattedMeals = meals.map((meal) => ({
-            id: meal.id,
-            type: "meal",
-            name: meal.name,
-            mealType: meal.mealType,
-            createdAt: meal.createdAt,
-            updatedAt: meal.updatedAt,
-            foods: meal.foods
+        // -----------------------------------------------------
+        // HELPER: EXTRACT CALORIES FROM ANY MACROS[]
+        // -----------------------------------------------------
+        const getCalories = (macros) => {
+            if (!macros || macros.length === 0) return 0;
+            return macros[0]?.calories || 0;
+        };
+
+        // -----------------------------------------------------
+        // FORMAT MEALS WITH CALORIES
+        // -----------------------------------------------------
+        const formattedMeals = meals.map((meal) => {
+            let mealTotalCalories = 0;
+
+            const formattedFoods = meal.foods
                 .map((item) => {
                     if (item.food) {
+                        const cal = getCalories(item.food.macros) * item.quantity;
+                        mealTotalCalories += cal;
+
                         return {
                             id: item.food.id,
                             type: "food",
                             name: item.food.name,
                             quantity: item.quantity,
+                            calories: cal,
                         };
                     }
+
                     if (item.userFood) {
+                        const cal = getCalories(item.userFood.macros) * item.quantity;
+                        mealTotalCalories += cal;
+
                         return {
                             id: item.userFood.id,
                             type: "userFood",
                             name: item.userFood.name,
                             quantity: item.quantity,
+                            calories: cal,
                         };
                     }
+
                     if (item.quickAdd) {
+                        const cal = getCalories(item.quickAdd.macros) * item.quantity;
+                        mealTotalCalories += cal;
+
                         return {
                             id: item.quickAdd.id,
                             type: "quickAdd",
                             name: "Quick Add",
                             quantity: item.quantity,
+                            calories: cal,
                         };
                     }
+
                     return null;
                 })
-                .filter(Boolean),
-        }));
+                .filter(Boolean);
 
-        // ---------------------------
-        // MERGE ALL DATA INTO SINGLE ARRAY
-        // ---------------------------
+            return {
+                id: meal.id,
+                type: "meal",
+                name: meal.name,
+                mealType: meal.mealType,
+                createdAt: meal.createdAt,
+                updatedAt: meal.updatedAt,
+                foods: formattedFoods,
+                calories: mealTotalCalories,
+            };
+        });
+
+        // -----------------------------------------------------
+        // MERGE DATA WITH CALORIES INCLUDED
+        // -----------------------------------------------------
         const mergedData = [
-            ...foods.map((f) => ({ id: f.id, type: "food", name: f.name, createdAt: f.createdAt, updatedAt: f.updatedAt })),
-            ...userFoods.map((uf) => ({ id: uf.id, type: "userFood", name: uf.name, createdAt: uf.createdAt, updatedAt: uf.updatedAt })),
+            ...foods.map((f) => ({
+                id: f.id,
+                type: "food",
+                name: f.name,
+                createdAt: f.createdAt,
+                updatedAt: f.updatedAt,
+                calories: getCalories(f.macros),
+            })),
+            ...userFoods.map((uf) => ({
+                id: uf.id,
+                type: "userFood",
+                name: uf.name,
+                createdAt: uf.createdAt,
+                updatedAt: uf.updatedAt,
+                calories: getCalories(uf.macros),
+            })),
             ...formattedMeals,
-        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); // latest first
+        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        // ---------------------------
-        // PAGINATION
-        // ---------------------------
         const paginatedData = mergedData.slice(skip, skip + limit);
 
         return NextResponse.json(
@@ -158,13 +182,6 @@ export async function GET(req) {
                     limit,
                     totalItems: mergedData.length,
                     totalPages: Math.ceil(mergedData.length / limit),
-                    searchUsed: search || null,
-                    dateFilterUsed:
-                        dateStr || (fromStr && toStr)
-                            ? dateStr
-                                ? { date: dateStr }
-                                : { from: fromStr, to: toStr }
-                            : null,
                 },
             },
             { status: 200 }
