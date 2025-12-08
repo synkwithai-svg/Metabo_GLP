@@ -6,7 +6,10 @@ export async function GET(req) {
     try {
         const userId = req.headers.get("x-user-id");
         if (!userId) {
-            return NextResponse.json({ error: "User ID header is required" }, { status: 400 });
+            return NextResponse.json(
+                { error: "User ID header is required" },
+                { status: 400 }
+            );
         }
 
         const url = new URL(req.url);
@@ -16,7 +19,6 @@ export async function GET(req) {
         const startOfDay = queryDate.startOf("day").toDate();
         const endOfDay = queryDate.endOf("day").toDate();
 
-        // Execute all queries in parallel using Promise.all
         const [
             foodLogs,
             waterLog,
@@ -26,15 +28,14 @@ export async function GET(req) {
             onboarding,
             nextInjectionShot,
             dashboard,
-            walkingStepsLogs
+            walkingStepsLogs,
         ] = await Promise.all([
-            // MACROS
             db.FoodLogItem.findMany({
                 where: {
                     log: {
                         userId,
-                        loggedAt: { gte: startOfDay, lte: endOfDay }
-                    }
+                        loggedAt: { gte: startOfDay, lte: endOfDay },
+                    },
                 },
                 select: {
                     macros: {
@@ -44,129 +45,99 @@ export async function GET(req) {
                             carbs: true,
                             fat: true,
                             fiber: true,
-                            energy: true
-                        }
-                    }
-                }
+                            energy: true,
+                        },
+                    },
+                },
             }),
 
-            // WATER
             db.WaterLog.findFirst({
                 where: {
                     userId,
-                    date: { gte: startOfDay, lte: endOfDay }
+                    date: { gte: startOfDay, lte: endOfDay },
                 },
                 select: {
-                    consumedWaters: {
-                        select: {
-                            consumedML: true
-                        }
-                    }
-                }
+                    consumedWaters: { select: { consumedML: true } },
+                },
             }),
 
-            // LAST INJECTION
             db.InjectionLog.findFirst({
-                where: {
-                    userId,
-                    date: { gte: startOfDay, lte: endOfDay }
-                },
+                where: { userId, date: { gte: startOfDay, lte: endOfDay } },
                 orderBy: { date: "desc" },
-                include: {
-                    medication: true,
-                    device: true
-                }
+                include: { medication: true, device: true },
             }),
 
-            // SIDE EFFECT
             db.SideEffectLog.findMany({
-                where: {
-                    userId,
-                    date: { gte: startOfDay, lte: endOfDay }
-                },
-                include: {
-                    sideEffects: true
-                }
+                where: { userId, date: { gte: startOfDay, lte: endOfDay } },
+                include: { sideEffects: true },
             }),
 
-            // WEIGHT LOG - most recent of the day
             db.weightlog.findFirst({
-                where: {
-                    userId,
-                    date: { gte: startOfDay, lte: endOfDay }
-                },
-                orderBy: { date: "desc" }, // ensures we get the most recent
+                where: { userId, date: { gte: startOfDay, lte: endOfDay } },
+                orderBy: { date: "desc" },
                 select: {
                     current_weight_kg: true,
-                    current_weight_lb: true
-                }
+                    current_weight_lb: true,
+                },
             }),
 
-            // ONBOARDING
             db.onboarding.findFirst({
                 where: { userId },
                 select: {
                     current_weight_kg: true,
                     current_weight_lb: true,
                     weight_goal_kg: true,
-                    weight_goal_lb: true
-                }
+                    weight_goal_lb: true,
+                },
             }),
 
-            // NEXT INJECTION SHOT
             db.NextInjectionShot.findFirst({
                 where: { userId },
                 orderBy: { Date: "asc" },
-                include: {
-                    medication: true,
-                    device: true
-                }
+                include: { medication: true, device: true },
             }),
 
-            // DASHBOARD
             db.dashboard.findFirst({
-                where: {
-                    userId,
-                    createdAt: { gte: startOfDay, lte: endOfDay }
-                },
-                orderBy: { createdAt: "desc" }
+                where: { userId, createdAt: { gte: startOfDay, lte: endOfDay } },
+                orderBy: { createdAt: "desc" },
             }),
 
-            // WALKING STEPS LOG
             db.WalkingStepsLog.findMany({
-                where: {
-                    userId,
-                    date: { gte: startOfDay, lte: endOfDay }
-                },
-                select: {
-                    NumberOfSteps: true
-                }
-            })
+                where: { userId, date: { gte: startOfDay, lte: endOfDay } },
+                select: { NumberOfSteps: true },
+            }),
         ]);
 
-        // Calculate total macros
-        const totalMacros = foodLogs.reduce((acc, item) => {
-            item.macros.forEach(macro => {
-                acc.calories += macro.calories ?? 0;
-                acc.protein += macro.protein ?? 0;
-                acc.carbs += macro.carbs ?? 0;
-                acc.fat += macro.fat ?? 0;
-                acc.fiber += macro.fiber ?? 0;
-                acc.energy += macro.energy ?? 0;
-            });
-            return acc;
-        }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, energy: 0 });
+        // TOTAL MACROS
+        const totalMacros = foodLogs.reduce(
+            (acc, item) => {
+                item.macros.forEach((macro) => {
+                    acc.calories += macro.calories ?? 0;
+                    acc.protein += macro.protein ?? 0;
+                    acc.carbs += macro.carbs ?? 0;
+                    acc.fat += macro.fat ?? 0;
+                    acc.fiber += macro.fiber ?? 0;
+                    acc.energy += macro.energy ?? 0;
+                });
+                return acc;
+            },
+            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, energy: 0 }
+        );
 
-        // Calculate total water consumed
-        const totalWaterConsumed = waterLog?.consumedWaters.reduce(
-            (acc, c) => acc + (c.consumedML ?? 0),
+        // WATER
+        const totalWaterConsumed =
+            waterLog?.consumedWaters.reduce(
+                (acc, c) => acc + (c.consumedML ?? 0),
+                0
+            ) ?? 0;
+
+        // STEPS
+        const totalSteps = walkingStepsLogs.reduce(
+            (acc, log) => acc + (log.NumberOfSteps ?? 0),
             0
-        ) ?? 0;
+        );
 
-        // Calculate total steps
-        const totalSteps = walkingStepsLogs.reduce((acc, log) => acc + (log.NumberOfSteps ?? 0), 0);
-
-        // Build weight object
+        // WEIGHT
         const weight = {
             initialWeightKg: onboarding?.current_weight_kg ?? null,
             initialWeightLb: onboarding?.current_weight_lb ?? null,
@@ -176,61 +147,32 @@ export async function GET(req) {
             currentWeightLb: weightLog?.current_weight_lb ?? null,
         };
 
+        // ⭐ ADD REMAINING DAYS UNTIL NEXT INJECTION
+        let remainingDaysUntilNextInjection = null;
+        if (nextInjectionShot?.Date) {
+            remainingDaysUntilNextInjection = dayjs(nextInjectionShot.Date)
+                .startOf("day")
+                .diff(dayjs().startOf("day"), "day");
+        }
+
+
         return NextResponse.json({
             date: queryDate.format("YYYY-MM-DD"),
             totalMacros,
             totalWaterConsumed,
-            totalSteps, // <-- added
+            totalSteps,
             lastInjection,
             sideEffectLog,
             weight,
             nextInjectionShot,
+            remainingDaysUntilNextInjection,
             dashboard,
         });
     } catch (error) {
         console.error(error);
-        return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
-    }
-}
-
-
-
-
-export async function POST(req) {
-    try {
-        const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid") || null;
-        const body = await req.json();
-        const { feeling, estimatedLevel } = body;
-
-        if (!userId) return NextResponse.json({ error: "userId is required" }, { status: 400 });
-        if (typeof feeling !== "number") return NextResponse.json({ error: "feeling must be a number" }, { status: 400 });
-
-        const startOfToday = dayjs().startOf("day").toDate();
-        const endOfToday = dayjs().endOf("day").toDate();
-
-        let dashboard = await db.dashboard.findFirst({
-            where: { userId, createdAt: { gte: startOfToday, lte: endOfToday } },
-        });
-
-        if (dashboard) {
-            dashboard = await db.dashboard.update({
-                where: { id: dashboard.id },
-                data: {
-                    feeling,
-                    ...(estimatedLevel !== undefined && { estimatedLevel }),
-                    deviceId: deviceId || dashboard.deviceId,
-                },
-            });
-        } else {
-            dashboard = await db.dashboard.create({
-                data: { userId, deviceId, feeling, estimatedLevel },
-            });
-        }
-
-        return NextResponse.json({ success: true, dashboard });
-    } catch (error) {
-        console.error(error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+        return NextResponse.json(
+            { error: "Something went wrong" },
+            { status: 500 }
+        );
     }
 }
