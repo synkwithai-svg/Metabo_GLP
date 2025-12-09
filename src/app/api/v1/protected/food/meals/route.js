@@ -72,7 +72,6 @@ export async function POST(req) {
   }
 }
 
-
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -124,12 +123,15 @@ export async function GET(req) {
     let totalItems = 0;
 
     if (type === "recent") {
-      // Get the most recent meal only
       meals = await db.meal.findMany({
         where: whereClause,
         include: {
           foods: {
-            include: { food: true, userFood: true, quickAdd: true },
+            include: {
+              food: { include: { macros: true } },
+              userFood: { include: { macros: true } },
+              quickAdd: { include: { macros: true } },
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -137,14 +139,17 @@ export async function GET(req) {
       });
       totalItems = meals.length;
     } else {
-      // Normal paginated fetch
       totalItems = await db.meal.count({ where: whereClause });
 
       meals = await db.meal.findMany({
         where: whereClause,
         include: {
           foods: {
-            include: { food: true, userFood: true, quickAdd: true },
+            include: {
+              food: { include: { macros: true } },
+              userFood: { include: { macros: true } },
+              quickAdd: { include: { macros: true } },
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -154,13 +159,20 @@ export async function GET(req) {
     }
 
     // ---------------------------
-    // FORMAT OUTPUT
+    // FORMAT OUTPUT WITH TOTAL CALORIES
     // ---------------------------
-    const formattedMeals = meals.map((meal) => ({
-      ...meal,
-      foods: meal.foods
+    const formattedMeals = meals.map((meal) => {
+      let totalCalories = 0;
+
+      const foods = meal.foods
         .map((item) => {
+          let calories = 0;
+
           if (item.food) {
+            // Sum all macros calories for this food
+            calories = (item.food.macros?.reduce((sum, m) => sum + (m.calories || 0), 0) || 0) * item.quantity;
+            totalCalories += calories;
+
             return {
               id: item.id,
               mealId: item.mealId,
@@ -169,9 +181,14 @@ export async function GET(req) {
               name: item.food.name,
               type: "food",
               food: item.food,
+              calories,
             };
           }
+
           if (item.userFood) {
+            calories = (item.userFood.macros?.reduce((sum, m) => sum + (m.calories || 0), 0) || 0) * item.quantity;
+            totalCalories += calories;
+
             return {
               id: item.id,
               mealId: item.mealId,
@@ -180,9 +197,14 @@ export async function GET(req) {
               name: item.userFood.name,
               type: "userFood",
               userFood: item.userFood,
+              calories,
             };
           }
+
           if (item.quickAdd) {
+            calories = (item.quickAdd.macros?.reduce((sum, m) => sum + (m.calories || 0), 0) || 0) * item.quantity;
+            totalCalories += calories;
+
             return {
               id: item.id,
               mealId: item.mealId,
@@ -191,12 +213,20 @@ export async function GET(req) {
               name: "Quick Add",
               type: "quickAdd",
               quickAdd: item.quickAdd,
+              calories,
             };
           }
-          return null; // skip nulls
+
+          return null;
         })
-        .filter(Boolean),
-    }));
+        .filter(Boolean);
+
+      return {
+        ...meal,
+        foods,
+        totalCalories,
+      };
+    });
 
     return NextResponse.json(
       {
