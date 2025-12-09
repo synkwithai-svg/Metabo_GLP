@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function PATCH(req, context) {
   const userId = req.headers.get("x-user-id");
+
   if (!userId) {
     return NextResponse.json(
       { success: false, message: "Unauthorized: Missing user ID" },
@@ -11,6 +12,7 @@ export async function PATCH(req, context) {
   }
 
   const { id } = await context.params;
+
   if (!id) {
     return NextResponse.json(
       { success: false, message: "Medication ID is required" },
@@ -20,35 +22,40 @@ export async function PATCH(req, context) {
 
   try {
     const body = await req.json();
-    const { name } = body;
 
-    if (!name) {
+    // Fetch the medication first to verify ownership
+    const existingMedication = await db.medication.findUnique({
+      where: { id },
+    });
+
+    if (!existingMedication) {
       return NextResponse.json(
-        { success: false, message: "Medication name is required" },
-        { status: 400 }
+        { success: false, message: "Medication not found" },
+        { status: 404 }
       );
     }
 
-    // Use update with a try-catch for “not found”
-    const updatedMedication = await db.medication.update({
-      where: { id },
-      data: { name },
-    });
-
-    // Check if the medication belongs to the logged-in user
-    if (updatedMedication.userId !== userId) {
+    if (existingMedication.userId !== userId) {
       return NextResponse.json(
         { success: false, message: "Unauthorized to edit this medication" },
         { status: 403 }
       );
     }
 
+    // Update all provided fields dynamically
+    const updatedMedication = await db.medication.update({
+      where: { id },
+      data: {
+        ...body, // allows updating name or PK values
+      },
+    });
+
     return NextResponse.json({
       success: true,
       medication: updatedMedication,
     });
+
   } catch (error) {
-    // Prisma throws an error if the record is not found
     if (error.code === "P2025") {
       return NextResponse.json(
         { success: false, message: "Medication not found" },
@@ -56,7 +63,7 @@ export async function PATCH(req, context) {
       );
     }
 
-    console.error(error);
+    console.error("PATCH medication error:", error);
     return NextResponse.json(
       { success: false, message: "Internal server error" },
       { status: 500 }

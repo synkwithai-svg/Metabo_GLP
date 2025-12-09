@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import dayjs from "dayjs";
+import calculateMedicationLevel from "@/lib/calculate-mediation-level";
 
 export async function GET(req) {
     try {
@@ -29,6 +30,7 @@ export async function GET(req) {
             nextInjectionShot,
             dashboard,
             walkingStepsLogs,
+            allInjections,
         ] = await Promise.all([
             db.FoodLogItem.findMany({
                 where: {
@@ -52,13 +54,8 @@ export async function GET(req) {
             }),
 
             db.WaterLog.findFirst({
-                where: {
-                    userId,
-                    date: { gte: startOfDay, lte: endOfDay },
-                },
-                select: {
-                    consumedWaters: { select: { consumedML: true } },
-                },
+                where: { userId, date: { gte: startOfDay, lte: endOfDay } },
+                select: { consumedWaters: { select: { consumedML: true } } },
             }),
 
             db.InjectionLog.findFirst({
@@ -106,6 +103,13 @@ export async function GET(req) {
                 where: { userId, date: { gte: startOfDay, lte: endOfDay } },
                 select: { NumberOfSteps: true },
             }),
+
+            // NEW: Fetch all injections for PK calculations
+            db.InjectionLog.findMany({
+                where: { userId },
+                orderBy: { date: "asc" },
+                include: { medication: true },
+            }),
         ]);
 
         // TOTAL MACROS
@@ -147,7 +151,7 @@ export async function GET(req) {
             currentWeightLb: weightLog?.current_weight_lb ?? null,
         };
 
-        // ⭐ ADD REMAINING DAYS UNTIL NEXT INJECTION
+        // ⭐ REMAINING DAYS UNTIL NEXT INJECTION
         let remainingDaysUntilNextInjection = null;
         if (nextInjectionShot?.Date) {
             remainingDaysUntilNextInjection = dayjs(nextInjectionShot.Date)
@@ -155,6 +159,14 @@ export async function GET(req) {
                 .diff(dayjs().startOf("day"), "day");
         }
 
+        // ⭐⭐ CALCULATE ESTIMATED MEDICATION LEVEL (PK MODEL)
+        let estimatedMedicationLevel = 0;
+
+        if (allInjections?.length > 0) {
+            estimatedMedicationLevel = allInjections.reduce((sum, inj) => {
+                return sum + calculateMedicationLevel(inj, inj.medication);
+            }, 0);
+        }
 
         return NextResponse.json({
             date: queryDate.format("YYYY-MM-DD"),
@@ -166,8 +178,10 @@ export async function GET(req) {
             weight,
             nextInjectionShot,
             remainingDaysUntilNextInjection,
+            estimatedMedicationLevel: Number(estimatedMedicationLevel.toFixed(3)),
             dashboard,
         });
+
     } catch (error) {
         console.error(error);
         return NextResponse.json(

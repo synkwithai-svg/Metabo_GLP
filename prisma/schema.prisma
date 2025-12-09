@@ -257,10 +257,17 @@ model Notification {
  */
 
 model Medication {
-  id                 String              @id @default(uuid())
-  name               String
-  userId             String?
-  user               User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String  @id @default(uuid())
+  name   String
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  doseMg             Float? // default dose (optional)
+  halfLifeHours      Float? // required for exponential decay
+  absorptionRateKa   Float? // optional, only if using ka model
+  bioavailability    Float? // optional (0–1)
+  volumeDistribution Float? // optional (L or L/kg)
+
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   injectionLogs      InjectionLog[]

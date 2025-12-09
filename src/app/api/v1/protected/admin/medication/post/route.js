@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
-import { NextResponse, NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function POST(req) {
-    // Get the userId from headers (set by middleware)
     const userId = req.headers.get("x-user-id");
 
     if (!userId) {
@@ -15,17 +14,32 @@ export async function POST(req) {
     try {
         const body = await req.json();
 
-        // Include userId in the data
-        const medication = await db.medication.create({
-            data: {
-                ...body,
-                userId, // attach the logged-in user's ID
-            },
+        // Validate: must be an array
+        if (!Array.isArray(body)) {
+            return NextResponse.json(
+                { success: false, message: "Expected an array of medications" },
+                { status: 400 }
+            );
+        }
+
+        // Attach userId to each item
+        const data = body.map((item) => ({
+            ...item,
+            userId,
+        }));
+
+        // Use createMany for bulk insert
+        const result = await db.medication.createMany({
+            data,
+            skipDuplicates: true, // avoids duplicate name+user conflicts
         });
 
-        return NextResponse.json({ success: true, medication });
+        return NextResponse.json({
+            success: true,
+            inserted: result.count,
+        });
     } catch (error) {
-        console.error(error);
+        console.error("Create medications error:", error);
         return NextResponse.json(
             {
                 success: false,
