@@ -20,7 +20,10 @@ export async function sendPushNotification(
       body: payload.body,
       image: payload.image || undefined,
     },
-    data: payload.data || {},
+    data: {
+      ...payload.data,
+      click_action: "FLUTTER_NOTIFICATION_CLICK",
+    },
     tokens: fcmTokens,
   };
 

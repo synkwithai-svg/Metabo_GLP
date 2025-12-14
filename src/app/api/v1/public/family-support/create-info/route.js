@@ -1,94 +1,117 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sendPushNotification } from "@/lib/services/sendPushNotification";
 
 export async function POST(req) {
     try {
         const body = await req.json();
         const { name, dob, token, relationship } = body;
 
-        if (!name) {
+        if (!name || !dob || !token) {
             return NextResponse.json(
-                { success: false, message: "Name is required" },
+                { success: false, message: "Missing required fields" },
                 { status: 400 }
             );
         }
 
-        if (!dob) {
-            return NextResponse.json(
-                { success: false, message: "Date of birth is required" },
-                { status: 400 }
-            );
-        }
-
-        if (!token) {
-            return NextResponse.json(
-                { success: false, message: "Invitation token is required" },
-                { status: 400 }
-            );
-        }
-
-        // Find invitation
+        // 1️⃣ Validate invitation
         const invitation = await db.invitation.findUnique({
             where: { token },
             include: { permissions: true },
         });
 
-        if (!invitation) {
+        if (!invitation || invitation.consumed) {
             return NextResponse.json(
-                { success: false, message: "Invalid token" },
-                { status: 404 }
-            );
-        }
-
-        if (invitation.consumed) {
-            return NextResponse.json(
-                { success: false, message: "Token has already been used" },
+                { success: false, message: "Invalid or used token" },
                 { status: 400 }
             );
         }
 
         if (invitation.expiresAt && invitation.expiresAt < new Date()) {
             return NextResponse.json(
-                { success: false, message: "Token has expired" },
+                { success: false, message: "Token expired" },
                 { status: 400 }
             );
         }
 
-        // Create the family with invitedById as userId
+        // 2️⃣ Create family
         const family = await db.family.create({
             data: {
                 name,
                 dob: new Date(dob),
-                userId: invitation.invitedById,
                 relationship,
+                userId: invitation.invitedById,
                 permissions: {
-                    connect: invitation.permissions.map((p) => ({ id: p.id })),
+                    connect: invitation.permissions.map(p => ({ id: p.id })),
                 },
-            },
-            include: {
-                permissions: true,
             },
         });
 
-        // Delete the permissions from the invitation
+        // 3️⃣ Consume invitation
         await db.invitation.update({
             where: { id: invitation.id },
             data: {
-                permissions: {
-                    set: [], // disconnect all permissions
-                },
                 consumed: true,
                 consumedBy: invitation.invitedById,
+                permissions: { set: [] },
             },
         });
 
+        // 4️⃣ Fetch user FCM tokens
+        const user = await db.user.findUnique({
+            where: { id: invitation.invitedById },
+            include: {
+                fcmTokens: true,
+            },
+        });
+
+        const fcmTokens = user?.fcmTokens.map(t => t.fcmToken) ?? [];
+
+        // 5️⃣ Create notification in DB
+        const notification = await db.notification.create({
+            data: {
+                type: "FAMILY_CREATED",
+                title: "New Family Member Added 👨‍👩‍👧",
+                body: `${name} has been added to your family`,
+                data: {
+                    familyId: family.id,
+                },
+                recipientId: invitation.invitedById,
+                senderFamilyId: family.id,
+                deliveredTo: {
+                    connect: user?.fcmTokens.map(t => ({ id: t.id })) ?? [],
+                },
+            },
+        });
+
+        // 6️⃣ Send FCM push
+        if (fcmTokens.length > 0) {
+            await sendPushNotification(fcmTokens, {
+                title: notification.title,
+                body: notification.body,
+                data: {
+                    notificationId: notification.id,
+                    familyId: family.id,
+                    type: "FAMILY_CREATED",
+                },
+            });
+
+            // 7️⃣ Mark notification as sent
+            await db.notification.update({
+                where: { id: notification.id },
+                data: { sentAt: new Date() },
+            });
+        }
+
         return NextResponse.json({
             success: true,
-            message: "Family created successfully and permissions assigned",
+            message: "Family created, notification saved & sent",
             family,
+            notification,
         });
+
     } catch (error) {
-        console.error("POST /family/create-with-invitation error:", error);
+        console.error("Create family error:", error);
         return NextResponse.json(
             { success: false, message: "Internal server error" },
             { status: 500 }
