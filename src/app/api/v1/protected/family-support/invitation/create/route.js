@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 
 export async function POST(req) {
     const invitedById = req.headers.get("x-user-id");
+
     if (!invitedById) {
         return NextResponse.json(
             { success: false, message: "Unauthorized: Missing user ID" },
@@ -22,7 +23,31 @@ export async function POST(req) {
             );
         }
 
-        // Generate a unique token
+        // ✅ Validate permissions exist
+        const existingPermissions = await db.permission.findMany({
+            where: {
+                id: { in: permissions },
+            },
+            select: { id: true },
+        });
+
+        const existingIds = existingPermissions.map((p) => p.id);
+        const invalidPermissionIds = permissions.filter(
+            (id) => !existingIds.includes(id)
+        );
+
+        if (invalidPermissionIds.length > 0) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: "Permission ID(s) do not exist",
+                    invalidPermissionIds,
+                },
+                { status: 400 }
+            );
+        }
+
+        // Generate token
         const token = randomBytes(16).toString("hex");
 
         // Create invitation

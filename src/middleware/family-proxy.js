@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+const DEFAULT_ALLOWED_ROUTES = [
+    "/api/v1/protected/family/message",
+    "/api/v1/protected/family/get-my-profile",
+    "/api/v1/protected/family/notification",
+];
+
 export async function familyProxy(payload, pathname) {
     if (!payload.familyId) {
         return new NextResponse(
@@ -26,9 +32,9 @@ export async function familyProxy(payload, pathname) {
     }
 
     // ------------------------------------------------------------------
-    // 🔥 ALWAYS ALLOW THIS ROUTE (bypass permission system)
+    // 🔥 ALWAYS ALLOW DEFAULT ROUTES (NO PERMISSION CHECK)
     // ------------------------------------------------------------------
-    if (pathname === "/api/v1/protected/family/message") {
+    if (DEFAULT_ALLOWED_ROUTES.includes(pathname)) {
         const res = NextResponse.next();
         res.headers.set("x-auth-type", "family");
         res.headers.set("x-family-id", familyMember.id);
@@ -38,7 +44,7 @@ export async function familyProxy(payload, pathname) {
     }
 
     // ------------------------------------------------------------------
-    // NORMAL PERMISSION CHECK FOR ALL OTHER ROUTES
+    // NORMAL PERMISSION CHECK
     // ------------------------------------------------------------------
     const hasPermission = familyMember.permissions.some(
         (perm) => perm.slug === pathname
@@ -47,7 +53,7 @@ export async function familyProxy(payload, pathname) {
     if (!hasPermission) {
         return new NextResponse(
             JSON.stringify({ success: false, message: "Forbidden: No permission" }),
-            { status: 400 }
+            { status: 403 }
         );
     }
 
