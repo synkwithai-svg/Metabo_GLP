@@ -880,6 +880,7 @@ model Subscription {
   deviceId     String?
   chatSessions ChatSession[]
   payments     Payment[]
+  tokenCounts  TokenCount[]
 
   @@map("subscriptions")
 }
@@ -913,8 +914,13 @@ model TokenCount {
 
   count Int @default(0)
 
+  limit Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
   @@map("token_count")
 }
