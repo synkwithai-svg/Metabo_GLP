@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getOpenAIClient } from "@/lib/getOpenAIClient";
+import { getMetaboSystemPrompt } from "@/lib/metaboSystemPrompt";
 
 export async function POST(req) {
     try {
-        // ================================
         // 1. AUTH / USER VALIDATION
-        // ================================
         const userId = req.headers.get("x-user-id");
         if (!userId) {
             return NextResponse.json(
@@ -25,24 +24,17 @@ export async function POST(req) {
             );
         }
 
-        // ================================
         // 2. GET ACTIVE SUBSCRIPTION
-        // ================================
         const activeSubscription = await db.subscription.findFirst({
             where: {
                 userId,
                 isActive: true,
-                OR: [
-                    { expiresAt: null }, // lifetime
-                    { expiresAt: { gt: new Date() } }, // not expired
-                ],
+                OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
             },
             orderBy: { createdAt: "desc" },
         });
 
-        // ================================
-        // 3. TOKEN LIMIT CHECK (BEFORE CHAT)
-        // ================================
+        // 3. TOKEN LIMIT CHECK
         let tokenCountRecord = await db.tokenCount.findFirst({
             where: {
                 userId,
@@ -51,7 +43,6 @@ export async function POST(req) {
             },
         });
 
-        // If record exists AND limit exists AND exceeded → BLOCK
         if (
             tokenCountRecord &&
             tokenCountRecord.limit !== null &&
@@ -66,16 +57,11 @@ export async function POST(req) {
             );
         }
 
-        // ================================
         // 4. GET OR CREATE CHAT SESSION
-        // ================================
         let chatSession = sessionId
             ? await db.chatSession.findUnique({ where: { id: sessionId } })
             : await db.chatSession.create({
-                data: {
-                    userId,
-                    subscriptionId: activeSubscription?.id || null,
-                },
+                data: { userId, subscriptionId: activeSubscription?.id || null },
             });
 
         if (!chatSession) {
@@ -85,20 +71,12 @@ export async function POST(req) {
             );
         }
 
-        // ================================
         // 5. SAVE USER MESSAGE
-        // ================================
         await db.chatMessage.create({
-            data: {
-                sessionId: chatSession.id,
-                isUser: true,
-                content: message,
-            },
+            data: { sessionId: chatSession.id, isUser: true, content: message },
         });
 
-        // ================================
         // 6. LOAD USER DATA FOR CONTEXT
-        // ================================
         const userData = await db.user.findUnique({
             where: { id: userId },
             include: {
@@ -123,9 +101,7 @@ export async function POST(req) {
             },
         });
 
-        // ================================
         // 7. LOAD PREVIOUS MESSAGES
-        // ================================
         const previousMessages = await db.chatMessage.findMany({
             where: { sessionId: chatSession.id },
             orderBy: { createdAt: "asc" },
@@ -136,23 +112,11 @@ export async function POST(req) {
             content: msg.content,
         }));
 
-        // ================================
-        // 8. SYSTEM PROMPT
-        // ================================
-        const systemPrompt = `
-You are a personalized AI health coach.
+        // 8. SYSTEM PROMPT (imported)
+        const systemPrompt = getMetaboSystemPrompt(userData);
 
-User data:
-${JSON.stringify(userData, null, 2)}
-
-Give clear, actionable, safe health advice.
-        `;
-
-        // ================================
         // 9. OPENAI CALL
-        // ================================
         const openai = await getOpenAIClient();
-
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -165,9 +129,7 @@ Give clear, actionable, safe health advice.
         const aiMessage = completion.choices[0].message?.content || "";
         const tokensUsed = completion.usage?.total_tokens || 0;
 
-        // ================================
         // 10. SAVE AI MESSAGE
-        // ================================
         await db.chatMessage.create({
             data: {
                 sessionId: chatSession.id,
@@ -177,9 +139,7 @@ Give clear, actionable, safe health advice.
             },
         });
 
-        // ================================
         // 11. UPDATE TOKEN COUNT
-        // ================================
         if (tokenCountRecord) {
             await db.tokenCount.update({
                 where: { id: tokenCountRecord.id },
@@ -192,14 +152,11 @@ Give clear, actionable, safe health advice.
                     subscriptionId: activeSubscription?.id || null,
                     deviceId: deviceId || null,
                     count: tokensUsed,
-                    // limit is set elsewhere (admin / webhook / seed)
                 },
             });
         }
 
-        // ================================
         // 12. RESPONSE
-        // ================================
         return NextResponse.json({
             success: true,
             sessionId: chatSession.id,
