@@ -68,6 +68,8 @@ model User {
   provider    String?
   providerUid String?
 
+  hasSubscription Boolean @default(false)
+
   remindersEnabled Boolean @default(true)
 
   members Family[]
@@ -106,6 +108,8 @@ model User {
   chatSessions          ChatSession[]
   coachConfig           CoachConfig?
   payments              Payment[]
+  apiKeys               ApiKey[]
+  tokenCounts           TokenCount[]
 
   @@map("users")
 }
@@ -147,6 +151,7 @@ model Device {
   notificationReminders NotificationReminder[]
   subscriptions         Subscription[]
   payments              Payment[]
+  tokenCounts           TokenCount[]
 }
 
 model Token {
@@ -350,6 +355,8 @@ model NextInjectionShot {
   injection_device String
 
   Injectionsite String?
+
+  notified Boolean @default(false)
 
   Date DateTime
 
@@ -860,22 +867,56 @@ model Subscription {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  deviceId String?
-  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  revenueCatUserId String    @unique // App user ID used in RevenueCat
+  entitlement      String // "metab_pro"
+  productId        String // monthly / yearly / lifetime  
+  isActive         Boolean   @default(false)
+  renewsAt         DateTime?
+  expiresAt        DateTime?
 
-  plan          String    @default("PREMIUM")
-  tokensAllowed Int       @default(5000)
-  tokensUsed    Int       @default(0)
-  renewsAt      DateTime? // subscription renewal date
-  isActive      Boolean   @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  device       Device?       @relation(fields: [deviceId], references: [id])
+  deviceId     String?
   chatSessions ChatSession[]
   payments     Payment[]
 
   @@map("subscriptions")
+}
+
+model ApiKey {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key       String    @unique
+  provider  String
+  tokens    Int?
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("api_keys")
+}
+
+// this is used to track the number of tokens used for chats ai coach
+model TokenCount {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  deviceId String?
+  device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  count Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("token_count")
 }
 
 model ChatSession {
@@ -902,8 +943,8 @@ model ChatMessage {
   sessionId String
   session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  isUser  Boolean // true = User message, false = AI message
-  content String // Full text of the message
+  isUser  Boolean
+  content String
 
   tokenCount Int @default(0)
 
@@ -938,12 +979,13 @@ model Payment {
   deviceId String?
   device   Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
-  SubscriptionId String?
-  Subscription   Subscription? @relation(fields: [SubscriptionId], references: [id])
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
-  amount   Float
-  currency String
-  notes    String?
+  amount                Float
+  currency              String
+  notes                 String?
+  stripePaymentIntentId String?
 
   status String? @default("PENDING")
 
