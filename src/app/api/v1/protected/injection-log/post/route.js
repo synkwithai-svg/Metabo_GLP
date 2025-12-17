@@ -40,7 +40,7 @@ export async function POST(req) {
         }
 
         // Validate injection data
-        if (!medicationId || !dosage || !site ) {
+        if (!medicationId || !dosage || !site) {
             // console.log("❌ Missing required fields!");
             return NextResponse.json(
                 { success: false, message: "medicationId, dosage, and site are required" },
@@ -151,7 +151,7 @@ export async function POST(req) {
 
             await db.nextInjectionShot.update({
                 where: { id: nextShot.id },
-                data: { Date: newDate },
+                data: { Date: newDate, notified: false },
             });
 
             // console.log("✔️ NextInjectionShot updated!");
