@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Jost } from "next/font/google";
 import "./globals.css";
-import NextAuthProvider from "@/components/SessionProviderWrapper";
-import NotificationInit from "@/components/NotificationInit";
+import { AuthProvider } from "@/hooks/use-auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,11 +33,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${jost.variable} antialiased`}
       >
-        <NextAuthProvider>
+        <AuthProvider>
           {" "}
-          <NotificationInit />
           {children}
-        </NextAuthProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -18,14 +18,14 @@ export default function Home() {
           experience with ease and efficiency.
         </p>
 
-        {/* <Link
+        <Link
           href="/login"
           className="px-10 py-3 rounded-xl font-semibold text-white shadow-lg shadow-black/20 
                      backdrop-blur-md border border-white/30 transition-all duration-300
                      hover:bg-white/20 hover:scale-105 active:scale-95"
         >
           Login
-        </Link> */}
+        </Link>
 
         {/* Small Floating Glow Effect */}
         <div className="absolute w-72 h-72 bg-[#4fc3f7]/20 rounded-full blur-3xl -z-10 animate-pulse"></div>

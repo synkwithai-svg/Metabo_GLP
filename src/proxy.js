@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { verifyToken } from "@/lib/token";
 import { db } from "@/lib/db";
 import { Role } from "@/lib/enums";
 import { familyProxy } from "./middleware/family-proxy";
 
 // ROUTE CONFIG
-
 const protectedPages = ["/dashboard", "/profile", "/settings"];
+const authPages = ["/login", "/register"];
 
 const userProtectedRoutes = ["/api/v1/protected", "/api/v1/protected/admin"];
 
@@ -15,9 +15,9 @@ const familyProtectedRoutes = ["/api/v1/protected/family"];
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  // CHECK IF ROUTE IS PROTECTED
-
   const isProtectedPage = protectedPages.some((r) => pathname.startsWith(r));
+
+  const isAuthPage = authPages.some((r) => pathname.startsWith(r));
 
   const isUserProtectedApi = userProtectedRoutes.some((r) =>
     pathname.startsWith(r)
@@ -27,12 +27,19 @@ export async function proxy(request) {
     pathname.startsWith(r)
   );
 
-  if (!isProtectedPage && !isUserProtectedApi && !isFamilyProtectedApi) {
+  // If route is not protected at all → allow
+  if (
+    !isProtectedPage &&
+    !isUserProtectedApi &&
+    !isFamilyProtectedApi &&
+    !isAuthPage
+  ) {
     return NextResponse.next();
   }
 
-  // GET ACCESS TOKEN
-
+  /* ----------------------------------------
+     GET TOKEN (Bearer OR Cookie)
+  ---------------------------------------- */
   let token = null;
 
   const authHeader = request.headers.get("authorization");
@@ -44,9 +51,23 @@ export async function proxy(request) {
     token = cookieToken;
   }
 
-  // --------------------------------
-  // NO TOKEN
-  // --------------------------------
+  /* ----------------------------------------
+     AUTH PAGE LOGIC (LOGIN / REGISTER)
+     If token exists → redirect to dashboard
+  ---------------------------------------- */
+  if (isAuthPage) {
+    if (token) {
+      const payload = await verifyToken(token);
+      if (payload) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+    }
+    return NextResponse.next();
+  }
+
+  /* ----------------------------------------
+     NO TOKEN HANDLING
+  ---------------------------------------- */
   if (!token) {
     if (isProtectedPage) {
       return NextResponse.redirect(new URL("/login", request.url));
@@ -58,8 +79,9 @@ export async function proxy(request) {
     );
   }
 
-  // VERIFY ACCESS TOKEN
-
+  /* ----------------------------------------
+     VERIFY TOKEN
+  ---------------------------------------- */
   const payload = await verifyToken(token);
 
   if (!payload) {
@@ -73,8 +95,9 @@ export async function proxy(request) {
     );
   }
 
-  // FAMILY TOKEN HANDLING
-
+  /* ----------------------------------------
+     FAMILY TOKEN HANDLING
+  ---------------------------------------- */
   if (payload.type === "FAMILY_ACCESS") {
     if (!isFamilyProtectedApi) {
       return NextResponse.json(
@@ -89,15 +112,15 @@ export async function proxy(request) {
     return familyProxy(payload, pathname);
   }
 
-  // NORMAL USER TOKEN
-
+  /* ----------------------------------------
+     NORMAL USER TOKEN
+  ---------------------------------------- */
   const user = await db.user.findUnique({
     where: { id: payload.userId },
     select: {
       id: true,
       email: true,
       role: true,
-      isDisabled: true,
     },
   });
 
@@ -107,13 +130,17 @@ export async function proxy(request) {
     }
 
     return NextResponse.json(
-      { success: false, message: "User not found or disabled" },
+      {
+        success: false,
+        message: "User not found or disabled",
+      },
       { status: 401 }
     );
   }
 
-  // ADMIN ROLE CHECK
-
+  /* ----------------------------------------
+     ADMIN ROUTE CHECK
+  ---------------------------------------- */
   if (pathname.startsWith("/api/v1/protected/admin")) {
     if (user.role !== Role.ADMIN && user.role !== Role.SUPERADMIN) {
       return NextResponse.json(
@@ -126,8 +153,9 @@ export async function proxy(request) {
     }
   }
 
-  // PASS USER CONTEXT
-
+  /* ----------------------------------------
+     PASS USER CONTEXT
+  ---------------------------------------- */
   const res = NextResponse.next();
 
   res.headers.set("x-auth-type", "user");
@@ -139,14 +167,16 @@ export async function proxy(request) {
   return res;
 }
 
-// MIDDLEWARE MATCHER
-
+/* ----------------------------------------
+   MIDDLEWARE MATCHER
+---------------------------------------- */
 export const config = {
   matcher: [
+    "/login",
+    "/register",
     "/dashboard/:path*",
     "/profile/:path*",
     "/settings/:path*",
-
     "/api/v1/protected/:path*",
     "/api/v1/protected/admin/:path*",
     "/api/v1/protected/family/:path*",

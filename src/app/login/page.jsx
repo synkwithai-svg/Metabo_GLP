@@ -1,26 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { TokenManager } from "@/lib/auth/token-manager";
+import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const { data: session, status } = useSession();
 
-  if (session) {
-    window.location.href = "/dashboard";
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess(false);
@@ -33,37 +29,54 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      // Use NextAuth credentials signIn
-      const result = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
+      const response = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (!result?.ok) {
-        setError(result?.error || "Login failed. Please try again.");
-      } else {
-        setSuccess(true);
+      const result = await response.json();
 
-        // Optional: store session info in localStorage if needed
-        // localStorage.setItem("user", JSON.stringify(result));
-
-        // Redirect to dashboard
-        setTimeout(() => {
-          window.location.href = "/dashboard";
-        }, 1000);
+      if (!result.success) {
+        setError(result.message || "Login failed. Please try again.");
+        setIsLoading(false);
+        return;
       }
+
+      // Store tokens
+      TokenManager.setTokens(
+        result.data.accessToken,
+        result.data.refreshToken,
+        result.data.user
+      );
+
+      setSuccess(true);
+
+      // Use router.push instead of window.location for Next.js routing
+      // Small delay to show success message
+      setTimeout(() => {
+        router.push("/dashboard");
+        // Force reload to ensure auth state updates
+        router.refresh();
+      }, 500);
+
     } catch (err) {
       console.error("Login error:", err);
       setError("An unexpected error occurred. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-primary/50">
-      <div className="container max-w-md mx-auto px-10 py-16 rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/30 via-primary/10 to-background">
+      <div className="container max-w-md mx-auto px-10 py-16 rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Welcome Back</h1>
+          <p className="text-muted-foreground">Sign in to your account</p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Email Field */}
           <div className="space-y-2">
@@ -127,8 +140,8 @@ export default function LoginForm() {
 
           {/* Success Message */}
           {success && (
-            <div className="flex gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-700">
+            <div className="flex gap-3 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+              <p className="text-sm text-green-700 dark:text-green-300">
                 Login successful! Redirecting...
               </p>
             </div>
@@ -158,7 +171,12 @@ export default function LoginForm() {
             >
               Forgot password?
             </a>
-            <a href="/signup">Create account</a>
+            <a
+              href="/signup"
+              className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
+            >
+              Create account
+            </a>
           </div>
         </form>
       </div>
