@@ -2,115 +2,136 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/token";
 import { db } from "@/lib/db";
 import { Role } from "@/lib/enums";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/options";
 import { familyProxy } from "./middleware/family-proxy";
 
-const userProtectedRoutes = ["/api/v1/protected", "/api/v1/protected/admin"];
-const familyProtectedRoutes = ["/api/v1/protected/family"];
+// ROUTE CONFIG
+
 const protectedPages = ["/dashboard", "/profile", "/settings"];
+
+const userProtectedRoutes = ["/api/v1/protected", "/api/v1/protected/admin"];
+
+const familyProtectedRoutes = ["/api/v1/protected/family"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  // -----------------------------------------------------
-  //  FRONTEND PAGES (session-based)
-  // ----------------------------------------------------- 
-  if (protectedPages.some((route) => pathname.startsWith(route))) {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-    return NextResponse.next();
-  }
+  // CHECK IF ROUTE IS PROTECTED
 
-  // -----------------------------------------------------
-  // CHECK IF API ROUTES NEED AUTH
-  // -----------------------------------------------------
-  const isUserProtected = userProtectedRoutes.some((r) =>
-    pathname.startsWith(r)
-  );
-  const isFamilyProtected = familyProtectedRoutes.some((r) =>
+  const isProtectedPage = protectedPages.some((r) => pathname.startsWith(r));
+
+  const isUserProtectedApi = userProtectedRoutes.some((r) =>
     pathname.startsWith(r)
   );
 
-  // If route is not protected → continue
-  if (!isUserProtected && !isFamilyProtected) {
+  const isFamilyProtectedApi = familyProtectedRoutes.some((r) =>
+    pathname.startsWith(r)
+  );
+
+  if (!isProtectedPage && !isUserProtectedApi && !isFamilyProtectedApi) {
     return NextResponse.next();
   }
 
-  // -----------------------------------------------------
-  // GET TOKEN
-  // -----------------------------------------------------
+  // GET ACCESS TOKEN
+
   let token = null;
+
   const authHeader = request.headers.get("authorization");
   const cookieToken = request.cookies.get("accessToken")?.value;
 
-  if (authHeader?.startsWith("Bearer ")) token = authHeader.split(" ")[1];
-  else if (cookieToken) token = cookieToken;
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } else if (cookieToken) {
+    token = cookieToken;
+  }
 
+  // --------------------------------
+  // NO TOKEN
+  // --------------------------------
   if (!token) {
-    return new NextResponse(
-      JSON.stringify({ success: false, message: "No token provided" }),
+    if (isProtectedPage) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    return NextResponse.json(
+      { success: false, message: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  // VERIFY ACCESS TOKEN
 
   const payload = await verifyToken(token);
+
   if (!payload) {
-    return new NextResponse(
-      JSON.stringify({ success: false, message: "Invalid or expired token" }),
+    if (isProtectedPage) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    return NextResponse.json(
+      { success: false, message: "Invalid or expired token" },
       { status: 401 }
     );
   }
 
-  // -----------------------------------------------------
-  // FAMILY TOKEN LOGIC (DELEGATE)
-  // -----------------------------------------------------
+  // FAMILY TOKEN HANDLING
+
   if (payload.type === "FAMILY_ACCESS") {
-    // ❌ Block family trying to access non-family routes
-    if (!isFamilyProtected) {
-      return new NextResponse(
-        JSON.stringify({
+    if (!isFamilyProtectedApi) {
+      return NextResponse.json(
+        {
           success: false,
-          message: "Forbidden: Family access not allowed for this route",
-        }),
-        { status: 401 }
+          message: "Forbidden: Family token not allowed",
+        },
+        { status: 403 }
       );
     }
 
-    // Pass pathname to check permission
     return familyProxy(payload, pathname);
   }
 
-  // -----------------------------------------------------
-  // NORMAL USER TOKEN LOGIC
-  // -----------------------------------------------------
-  const user = await db.user.findUnique({ where: { id: payload.userId } });
+  // NORMAL USER TOKEN
 
-  if (!user) {
-    return new NextResponse(
-      JSON.stringify({ success: false, message: "User not found" }),
+  const user = await db.user.findUnique({
+    where: { id: payload.userId },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      isDisabled: true,
+    },
+  });
+
+  if (!user || user.isDisabled) {
+    if (isProtectedPage) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    return NextResponse.json(
+      { success: false, message: "User not found or disabled" },
       { status: 401 }
     );
   }
 
-  // Admin-only check
+  // ADMIN ROLE CHECK
+
   if (pathname.startsWith("/api/v1/protected/admin")) {
     if (user.role !== Role.ADMIN && user.role !== Role.SUPERADMIN) {
-      return new NextResponse(
-        JSON.stringify({
+      return NextResponse.json(
+        {
           success: false,
-          message: "Forbidden: Insufficient role",
-        }),
+          message: "Forbidden: Admin access required",
+        },
         { status: 403 }
       );
     }
   }
 
+  // PASS USER CONTEXT
+
   const res = NextResponse.next();
+
   res.headers.set("x-auth-type", "user");
-  res.headers.set("x-user-id", user.id);
+  res.headers.set("x-user-id", String(user.id));
   res.headers.set("x-user-email", user.email ?? "");
   res.headers.set("x-user-role", user.role);
   res.headers.set("x-user-deviceid", payload.deviceId ?? "");
@@ -118,9 +139,14 @@ export async function proxy(request) {
   return res;
 }
 
+// MIDDLEWARE MATCHER
+
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|icon(?:\\.\\w+)?\\.(?:svg|png)).*)",
+    "/dashboard/:path*",
+    "/profile/:path*",
+    "/settings/:path*",
+
     "/api/v1/protected/:path*",
     "/api/v1/protected/admin/:path*",
     "/api/v1/protected/family/:path*",

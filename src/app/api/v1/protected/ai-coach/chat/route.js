@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getOpenAIClient } from "@/lib/getOpenAIClient";
+import { getOpenAIClient } from "@/lib/getOpenAIKey";
 import { getMetaboSystemPrompt } from "@/lib/metaboSystemPrompt";
 
 export async function POST(req) {
