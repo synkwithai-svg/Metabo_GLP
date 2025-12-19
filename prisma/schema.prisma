@@ -187,7 +187,7 @@ model UserPlan {
   waterTargetMl Float? @default(3000)
 
   nextInjectionShotId String?
-  nextInjectionShot   InjectionShot? @relation(fields: [nextInjectionShotId], references: [id], onDelete: SetNull)
+  nextInjectionShot   NextInjectionShot? @relation(fields: [nextInjectionShotId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -360,8 +360,9 @@ model NextInjectionShot {
 
   Date DateTime
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userPlans UserPlan[]
 
   @@map("next_injections")
 }
@@ -415,7 +416,6 @@ model InjectionShot {
   isFirstDose Boolean     @default(true)
   CreatedAt   DateTime    @default(now())
   treatments  Treatment[]
-  userPlans   UserPlan[]
 }
 
 /**

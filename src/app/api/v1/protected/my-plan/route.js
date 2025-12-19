@@ -4,11 +4,11 @@ import { db } from "@/lib/db";
 export async function POST(req) {
     try {
         const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid") || null;
+        const deviceId = req.headers.get("x-user-deviceid");
 
         if (!userId) {
             return NextResponse.json(
-                { message: "User ID header is required" },
+                { success: false, message: "User ID header is required" },
                 { status: 400 }
             );
         }
@@ -25,39 +25,50 @@ export async function POST(req) {
             waterTargetMl,
         } = body;
 
-        // Check if user already has a plan
-        const existingPlan = await db.userPlan.findUnique({
-            where: { userId },
-        });
+        const userPlan = await db.$transaction(async (tx) => {
+            // 1️⃣ Check if plan exists
+            const existingPlan = await tx.userPlan.findUnique({ where: { userId } });
+            if (existingPlan) {
+                throw new Error("User plan already exists");
+            }
 
-        if (existingPlan) {
-            return NextResponse.json(
-                { message: "User plan already exists" },
-                { status: 400 }
-            );
-        }
+            const now = new Date();
 
-        // Find next injection shot (only one per user)
-        const nextInjectionShot = await db.injectionShot.findFirst({
-            where: { userId },
-            orderBy: { CreatedAt: "asc" }, 
-        });
+            // 2️⃣ Find next upcoming injection
+            let injection = await tx.nextInjectionShot.findFirst({
+                where: { userId, Date: { gte: now } },
+                orderBy: { Date: "asc" },
+            });
 
+            // 3️⃣ Fallback → last past injection
+            if (!injection) {
+                injection = await tx.nextInjectionShot.findFirst({
+                    where: { userId, Date: { lt: now } },
+                    orderBy: { Date: "desc" },
+                });
+            }
 
-        const userPlan = await db.userPlan.create({
-            data: {
-                userId,
-                deviceId,
-                energy,
-                calories,
-                protein,
-                carbs,
-                fat,
-                fiber,
-                stepsTarget,
-                waterTargetMl,
-                nextInjectionShotId: nextInjectionShot?.id || null,
-            },
+            // 4️⃣ Create plan (FK safe)
+            return await tx.userPlan.create({
+                data: {
+                    userId,
+                    ...(deviceId
+                        ? { device: { connect: { id: deviceId } } }
+                        : undefined),
+                    energy,
+                    calories,
+                    protein,
+                    carbs,
+                    fat,
+                    fiber,
+                    stepsTarget,
+                    waterTargetMl,
+                    ...(injection
+                        ? { nextInjectionShot: { connect: { id: injection.id } } }
+                        : undefined),
+                },
+                include: { nextInjectionShot: true, device: true },
+            });
         });
 
         return NextResponse.json({
@@ -68,20 +79,22 @@ export async function POST(req) {
     } catch (error) {
         console.error("Create Plan Error:", error);
         return NextResponse.json(
-            { success: false, message: error.message },
-            { status: 500 }
+            { success: false, message: error.message || "Internal Server Error" },
+            { status: error.message === "User plan already exists" ? 400 : 500 }
         );
     }
 }
 
+
+
 export async function PUT(req) {
     try {
         const userId = req.headers.get("x-user-id");
-        const deviceId = req.headers.get("x-user-deviceid") || null;
+        const deviceId = req.headers.get("x-user-deviceid");
 
         if (!userId) {
             return NextResponse.json(
-                { message: "User ID header is required" },
+                { success: false, message: "User ID header is required" },
                 { status: 400 }
             );
         }
@@ -98,38 +111,54 @@ export async function PUT(req) {
             waterTargetMl,
         } = body;
 
-        // Only update if plan exists
-        const userPlan = await db.userPlan.findUnique({
-            where: { userId },
-        });
+        const updatedPlan = await db.$transaction(async (tx) => {
+            // 1️⃣ Ensure plan exists
+            const plan = await tx.userPlan.findUnique({ where: { userId } });
+            if (!plan) throw new Error("User plan does not exist");
 
-        if (!userPlan) {
-            return NextResponse.json(
-                { message: "User plan does not exist" },
-                { status: 404 }
-            );
-        }
+            const now = new Date();
 
-        // Find next injection shot (only one for user)
-        const nextInjectionShot = await db.injectionShot.findFirst({
-            where: { userId },
-            orderBy: { date: "asc" },
-        });
+            // 2️⃣ Get upcoming injection
+            let injection = await tx.nextInjectionShot.findFirst({
+                where: { userId, Date: { gte: now } },
+                orderBy: { Date: "asc" },
+            });
 
-        const updatedPlan = await db.userPlan.update({
-            where: { userId },
-            data: {
-                deviceId,
-                energy,
-                calories,
-                protein,
-                carbs,
-                fat,
-                fiber,
-                stepsTarget,
-                waterTargetMl,
-                nextInjectionShotId: nextInjectionShot?.id || null,
-            },
+            // 3️⃣ Fallback → last past injection
+            if (!injection) {
+                injection = await tx.nextInjectionShot.findFirst({
+                    where: { userId, Date: { lt: now } },
+                    orderBy: { Date: "desc" },
+                });
+            }
+
+            // 4️⃣ Update plan (relations handled correctly)
+            return await tx.userPlan.update({
+                where: { userId },
+                data: {
+                    energy,
+                    calories,
+                    protein,
+                    carbs,
+                    fat,
+                    fiber,
+                    stepsTarget,
+                    waterTargetMl,
+
+                    // ✅ Device relation
+                    ...(deviceId
+                        ? { device: { connect: { id: deviceId } } }
+                        : { device: { disconnect: true } }
+                    ),
+
+                    // ✅ Injection relation
+                    ...(injection
+                        ? { nextInjectionShot: { connect: { id: injection.id } } }
+                        : { nextInjectionShot: { disconnect: true } }
+                    ),
+                },
+                include: { nextInjectionShot: true, device: true },
+            });
         });
 
         return NextResponse.json({
@@ -140,37 +169,71 @@ export async function PUT(req) {
     } catch (error) {
         console.error("Update Plan Error:", error);
         return NextResponse.json(
-            { success: false, message: error.message },
-            { status: 500 }
+            { success: false, message: error.message || "Internal Server Error" },
+            { status: error.message === "User plan does not exist" ? 404 : 500 }
         );
     }
 }
 
+
+
 export async function GET(req) {
     try {
         const userId = req.headers.get("x-user-id");
+        const deviceId = req.headers.get("x-user-deviceid");
 
         if (!userId) {
             return NextResponse.json(
-                { message: "User ID header is required" },
+                { success: false, message: "User ID header is required" },
                 { status: 400 }
             );
         }
 
+        const userPlan = await db.$transaction(async (tx) => {
+            // 1️⃣ Check existing plan
+            const existingPlan = await tx.userPlan.findUnique({
+                where: { userId },
+                include: { nextInjectionShot: true },
+            });
 
-        const userPlan = await db.userPlan.findUnique({
-            where: { userId },
-            include: {
-                nextInjectionShot: true,
-            },
+            if (existingPlan) {
+                return existingPlan;
+            }
+
+            const now = new Date();
+
+            // 2️⃣ Find NEXT upcoming injection
+            let injection = await tx.nextInjectionShot.findFirst({
+                where: {
+                    userId,
+                    Date: { gte: now },
+                },
+                orderBy: { Date: "asc" },
+            });
+
+            // 3️⃣ Fallback → last past injection (missed)
+            if (!injection) {
+                injection = await tx.nextInjectionShot.findFirst({
+                    where: {
+                        userId,
+                        Date: { lt: now },
+                    },
+                    orderBy: { Date: "desc" },
+                });
+            }
+
+            // 4️⃣ Create plan - FIXED
+            return await tx.userPlan.create({
+                data: {
+                    userId,
+                    deviceId: deviceId || null,
+                    nextInjectionShotId: injection?.id || null,
+                },
+                include: {
+                    nextInjectionShot: true,
+                },
+            });
         });
-
-        if (!userPlan) {
-            return NextResponse.json(
-                { message: "User plan not found" },
-                { status: 404 }
-            );
-        }
 
         return NextResponse.json({
             success: true,
@@ -185,3 +248,4 @@ export async function GET(req) {
         );
     }
 }
+
