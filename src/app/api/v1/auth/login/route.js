@@ -5,8 +5,9 @@ import { firebaseAdmin } from "@/lib/services/firebaseAdmin";
 import { db } from "@/lib/db";
 import { generateAccessToken, generateRefreshToken } from "@/lib/token";
 import { z } from "zod";
+import { cookies } from "next/headers";
 
-// Validation schema for email/password login or Google login
+// Validation schema
 const LoginSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(6).optional(),
@@ -17,7 +18,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
 
-    // Validate request body
+    // Validate request
     const validationResult = LoginSchema.safeParse(body);
     if (!validationResult.success) {
       const firstErrorMessage =
@@ -33,7 +34,9 @@ export async function POST(req) {
     let provider = null;
     let user;
 
+    // -----------------------------
     // 1️⃣ Google login flow
+    // -----------------------------
     if (googleIdToken) {
       try {
         const decodedToken = await firebaseAdmin.auth().verifyIdToken(googleIdToken);
@@ -48,14 +51,12 @@ export async function POST(req) {
           );
         }
 
-        // Check if user exists in DB by email
         user = await db.user.findUnique({
           where: { email: googleEmail },
           include: { devices: true },
         });
 
         if (user) {
-          // Update provider info if not set
           if (!user.provider) {
             user = await db.user.update({
               where: { id: user.id },
@@ -63,7 +64,6 @@ export async function POST(req) {
             });
           }
         } else {
-          // Create new user for first-time Google login
           user = await db.user.create({
             data: {
               id: uid,
@@ -83,23 +83,21 @@ export async function POST(req) {
         );
       }
     }
+    // -----------------------------
     // 2️⃣ Email/password login flow
+    // -----------------------------
     else if (email && password) {
       try {
-        // First check if user exists in Firebase Auth
-        let userExists = false;
+        // Check if user exists in Firebase Auth
         try {
           await firebaseAdmin.auth().getUserByEmail(email);
-          userExists = true;
         } catch (checkError) {
-          const checkCode = checkError.code?.toString() || "";
-          if (checkCode === "auth/user-not-found") {
+          if (checkError.code?.toString() === "auth/user-not-found") {
             return NextResponse.json(
               { success: false, message: "User not registered. Please sign up first." },
               { status: 404 }
             );
           }
-          // If other error, continue to login attempt
         }
 
         // Attempt login
@@ -107,18 +105,17 @@ export async function POST(req) {
         uid = userCredential.user.uid;
         provider = "email";
 
-        // Check if user exists in DB
+        // Check DB
         user = await db.user.findUnique({
           where: { id: uid },
           include: { devices: true },
         });
 
         if (!user) {
-          // Create user in DB if first-time email/password login
           user = await db.user.create({
             data: {
               id: uid,
-              email: email,
+              email,
               isAnonymous: false,
               role: "USER",
               provider: "email",
@@ -128,19 +125,14 @@ export async function POST(req) {
         }
       } catch (err) {
         console.error("Email login error:", err);
-
         let message = "Login failed";
         let statusCode = 500;
-        const code = err.code?.toString() || "";
 
-        // More specific error messages
+        const code = err.code?.toString() || "";
         if (code === "auth/invalid-email") {
           message = "Invalid email address format";
           statusCode = 400;
-        } else if (code === "auth/wrong-password") {
-          message = "Incorrect password. Please try again.";
-          statusCode = 401;
-        } else if (code === "auth/invalid-credential") {
+        } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
           message = "Incorrect password. Please try again.";
           statusCode = 401;
         } else if (code === "auth/user-disabled") {
@@ -163,14 +155,43 @@ export async function POST(req) {
       );
     }
 
-    // 3️⃣ Determine deviceId (optional)
+    // -----------------------------
+    // 3️⃣ Device ID (optional)
+    // -----------------------------
     const deviceIdToUse = user.devices?.[0]?.id ?? null;
 
+    // -----------------------------
     // 4️⃣ Generate tokens
+    // -----------------------------
     const accessToken = await generateAccessToken(uid, deviceIdToUse);
     const refreshToken = await generateRefreshToken(uid, deviceIdToUse);
 
-    // 5️⃣ Return response
+    // -----------------------------
+    // 5️⃣ Set cookies
+    // -----------------------------
+    const cookieStore = await cookies();
+    cookieStore.set({
+      name: "accessToken",
+      value: accessToken,
+      httpOnly: true,
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24, // 1 day
+    });
+    cookieStore.set({
+      name: "refreshToken",
+      value: refreshToken,
+      httpOnly: true,
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    // -----------------------------
+    // 6️⃣ Return response as-is
+    // -----------------------------
     return NextResponse.json(
       {
         success: true,

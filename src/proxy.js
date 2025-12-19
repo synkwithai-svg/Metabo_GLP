@@ -9,39 +9,37 @@ const protectedPages = ["/dashboard", "/profile", "/settings"];
 const authPages = ["/login", "/register"];
 
 const userProtectedRoutes = ["/api/v1/protected", "/api/v1/protected/admin"];
-
 const familyProtectedRoutes = ["/api/v1/protected/family"];
+
+// Public APIs that don't need authentication
+const publicApis = ["/api/v1/auth", "/api/v1/public", "/api/v1/webhook"];
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
-  const isProtectedPage = protectedPages.some((r) => pathname.startsWith(r));
+  // Skip public APIs
+  if (publicApis.some((r) => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
 
-  const isAuthPage = authPages.some((r) => pathname.startsWith(r));
+  // Skip family-protected API if handled separately
+  const isFamilyProtectedApi = familyProtectedRoutes.some((r) =>
+    pathname.startsWith(r)
+  );
 
   const isUserProtectedApi = userProtectedRoutes.some((r) =>
     pathname.startsWith(r)
   );
 
-  const isFamilyProtectedApi = familyProtectedRoutes.some((r) =>
-    pathname.startsWith(r)
-  );
+  // Skip non-protected routes
+  const isProtectedPage = protectedPages.some((r) => pathname.startsWith(r));
 
-  // If route is not protected at all → allow
-  if (
-    !isProtectedPage &&
-    !isUserProtectedApi &&
-    !isFamilyProtectedApi &&
-    !isAuthPage
-  ) {
-    return NextResponse.next();
-  }
+  const isAuthPage = authPages.some((r) => pathname.startsWith(r));
 
-  /* ----------------------------------------
-     GET TOKEN (Bearer OR Cookie)
-  ---------------------------------------- */
+  // ----------------------------------------
+  // GET TOKEN (Bearer OR Cookie)
+  // ----------------------------------------
   let token = null;
-
   const authHeader = request.headers.get("authorization");
   const cookieToken = request.cookies.get("accessToken")?.value;
 
@@ -51,10 +49,9 @@ export async function proxy(request) {
     token = cookieToken;
   }
 
-  /* ----------------------------------------
-     AUTH PAGE LOGIC (LOGIN / REGISTER)
-     If token exists → redirect to dashboard
-  ---------------------------------------- */
+  // ----------------------------------------
+  // AUTH PAGE LOGIC (LOGIN / REGISTER)
+  // ----------------------------------------
   if (isAuthPage) {
     if (token) {
       const payload = await verifyToken(token);
@@ -65,46 +62,40 @@ export async function proxy(request) {
     return NextResponse.next();
   }
 
-  /* ----------------------------------------
-     NO TOKEN HANDLING
-  ---------------------------------------- */
+  // ----------------------------------------
+  // NO TOKEN
+  // ----------------------------------------
   if (!token) {
-    if (isProtectedPage) {
-      return NextResponse.redirect(new URL("/login", request.url));
+    if (isProtectedPage || isUserProtectedApi || isFamilyProtectedApi) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
     }
-
-    return NextResponse.json(
-      { success: false, message: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.next();
   }
 
-  /* ----------------------------------------
-     VERIFY TOKEN
-  ---------------------------------------- */
+  // ----------------------------------------
+  // VERIFY TOKEN
+  // ----------------------------------------
   const payload = await verifyToken(token);
-
   if (!payload) {
     if (isProtectedPage) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-
     return NextResponse.json(
       { success: false, message: "Invalid or expired token" },
       { status: 401 }
     );
   }
 
-  /* ----------------------------------------
-     FAMILY TOKEN HANDLING
-  ---------------------------------------- */
+  // ----------------------------------------
+  // FAMILY TOKEN HANDLING
+  // ----------------------------------------
   if (payload.type === "FAMILY_ACCESS") {
     if (!isFamilyProtectedApi) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Forbidden: Family token not allowed",
-        },
+        { success: false, message: "Forbidden: Family token not allowed" },
         { status: 403 }
       );
     }
@@ -112,9 +103,9 @@ export async function proxy(request) {
     return familyProxy(payload, pathname);
   }
 
-  /* ----------------------------------------
-     NORMAL USER TOKEN
-  ---------------------------------------- */
+  // ----------------------------------------
+  // NORMAL USER TOKEN
+  // ----------------------------------------
   const user = await db.user.findUnique({
     where: { id: payload.userId },
     select: {
@@ -128,34 +119,27 @@ export async function proxy(request) {
     if (isProtectedPage) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-
     return NextResponse.json(
-      {
-        success: false,
-        message: "User not found or disabled",
-      },
+      { success: false, message: "User not found or disabled" },
       { status: 401 }
     );
   }
 
-  /* ----------------------------------------
-     ADMIN ROUTE CHECK
-  ---------------------------------------- */
+  // ----------------------------------------
+  // ADMIN ROUTE CHECK
+  // ----------------------------------------
   if (pathname.startsWith("/api/v1/protected/admin")) {
     if (user.role !== Role.ADMIN && user.role !== Role.SUPERADMIN) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Forbidden: Admin access required",
-        },
+        { success: false, message: "Forbidden: Admin access required" },
         { status: 403 }
       );
     }
   }
 
-  /* ----------------------------------------
-     PASS USER CONTEXT
-  ---------------------------------------- */
+  // ----------------------------------------
+  // PASS USER CONTEXT
+  // ----------------------------------------
   const res = NextResponse.next();
 
   res.headers.set("x-auth-type", "user");
@@ -167,9 +151,9 @@ export async function proxy(request) {
   return res;
 }
 
-/* ----------------------------------------
-   MIDDLEWARE MATCHER
----------------------------------------- */
+// ----------------------------------------
+// MIDDLEWARE MATCHER
+// ----------------------------------------
 export const config = {
   matcher: [
     "/login",

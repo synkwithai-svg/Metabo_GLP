@@ -7,7 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { TokenManager, type UserData } from "@/lib/auth/token-manager";
+
+export interface UserData {
+  isAnonymous: boolean;
+  isOnboarded: boolean;
+  role: string;
+  provider?: string;
+}
 
 interface AuthContextType {
   user: UserData | null;
@@ -28,43 +34,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load user data on mount
-    const userData = TokenManager.getUserData();
-    setUser(userData);
-    setIsLoading(false);
-
-    // Set up token rotation interval for protected routes
-    // Check every 5 minutes if we're on a protected route
-    const interval = setInterval(() => {
-      const currentPath = window.location.pathname;
-      const isProtectedRoute =
-        currentPath.startsWith("/dashboard") ||
-        currentPath.startsWith("/admin") ||
-        currentPath.includes("/api/v1/protected/admin");
-
-      if (isProtectedRoute && TokenManager.isAuthenticated()) {
-        // Silently refresh token
-        TokenManager.refreshAccessToken().catch(() => {
-          // If refresh fails, logout
-          logout();
+    const fetchUser = async () => {
+      try {
+        const res = await fetch("/api/v1/auth/me", {
+          method: "GET",
+          credentials: "include",
         });
-      }
-    }, 5 * 60 * 1000); // 5 minutes
 
-    return () => clearInterval(interval);
+        if (!res.ok) throw new Error("Not authenticated");
+
+        const data = await res.json();
+        if (data.success) {
+          setUser(data.data.user);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUser();
   }, []);
 
   const logout = async () => {
-    await TokenManager.clearTokens();
-    setUser(null);
-    window.location.href = "/login";
+    try {
+      await fetch("/api/v1/auth/logout-web", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setUser(null);
+      window.location.href = "/login";
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: TokenManager.isAuthenticated(),
+        isAuthenticated: !!user,
         isLoading,
         logout,
       }}

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
-import { TokenManager } from "@/lib/auth/token-manager";
 import { useRouter } from "next/navigation";
 
 export default function LoginForm() {
@@ -31,9 +30,8 @@ export default function LoginForm() {
     try {
       const response = await fetch("/api/v1/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // important for cookies
         body: JSON.stringify({ email, password }),
       });
 
@@ -45,23 +43,13 @@ export default function LoginForm() {
         return;
       }
 
-      // Store tokens
-      TokenManager.setTokens(
-        result.data.accessToken,
-        result.data.refreshToken,
-        result.data.user
-      );
-
       setSuccess(true);
 
-      // Use router.push instead of window.location for Next.js routing
-      // Small delay to show success message
+      // Redirect after a short delay to show success message
       setTimeout(() => {
         router.push("/dashboard");
-        // Force reload to ensure auth state updates
         router.refresh();
       }, 500);
-
     } catch (err) {
       console.error("Login error:", err);
       setError("An unexpected error occurred. Please try again.");
@@ -80,10 +68,7 @@ export default function LoginForm() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Email Field */}
           <div className="space-y-2">
-            <label
-              htmlFor="email"
-              className="text-sm font-medium text-foreground"
-            >
+            <label htmlFor="email" className="text-sm font-medium text-foreground">
               Email Address
             </label>
             <Input
@@ -99,10 +84,7 @@ export default function LoginForm() {
 
           {/* Password Field */}
           <div className="space-y-2">
-            <label
-              htmlFor="password"
-              className="text-sm font-medium text-foreground"
-            >
+            <label htmlFor="password" className="text-sm font-medium text-foreground">
               Password
             </label>
             <div className="relative">
@@ -121,11 +103,7 @@ export default function LoginForm() {
                 disabled={isLoading}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showPassword ? (
-                  <EyeOff className="w-4 h-4" />
-                ) : (
-                  <Eye className="w-4 h-4" />
-                )}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
@@ -165,16 +143,10 @@ export default function LoginForm() {
 
           {/* Footer Links */}
           <div className="flex items-center justify-between text-sm">
-            <a
-              href="/forgot-password"
-              className="text-primary hover:underline transition-colors"
-            >
+            <a href="/forgot-password" className="text-primary hover:underline transition-colors">
               Forgot password?
             </a>
-            <a
-              href="/signup"
-              className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
-            >
+            <a href="/signup" className="text-muted-foreground hover:text-foreground hover:underline transition-colors">
               Create account
             </a>
           </div>

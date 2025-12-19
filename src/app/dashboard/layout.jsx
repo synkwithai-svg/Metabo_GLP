@@ -68,7 +68,6 @@ export default function AdminLayout({ children }) {
             router.replace("/login")
             return
         }
-
         setIsCheckingAuth(false)
     }, [isAuthenticated, isLoading, router])
 

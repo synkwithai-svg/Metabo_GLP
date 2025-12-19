@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, generateAccessToken } from "@/lib/token";
 import { db } from "@/lib/db";
+import { cookies } from "next/headers";
 
 export async function POST(req) {
     try {
@@ -47,8 +48,7 @@ export async function POST(req) {
         }
 
         // 4️⃣ Check if refresh token is expired
-        if (new Date() > storedToken.expiresAt) {
-            // Delete all tokens linked to this user
+        if (storedToken.expiresAt && new Date() > storedToken.expiresAt) {
             await db.token.deleteMany({ where: { userId } });
 
             return NextResponse.json(
@@ -67,6 +67,18 @@ export async function POST(req) {
 
         // 6️⃣ Generate new access token
         const newAccessToken = await generateAccessToken(userId, deviceId);
+
+        // 7️⃣ Set access token as HTTP-only cookie
+        const cookieStore = cookies();
+        cookieStore.set({
+            name: "accessToken",
+            value: newAccessToken,
+            httpOnly: true,
+            path: "/",
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 60 * 60 * 24, // 1 day
+        });
 
         return NextResponse.json(
             {

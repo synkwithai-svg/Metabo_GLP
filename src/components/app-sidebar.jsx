@@ -1,9 +1,7 @@
 "use client";
 
 import React from "react";
-
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
 import {
     LayoutDashboard,
     Settings,
@@ -12,8 +10,8 @@ import {
     ChevronRight,
     LogOut,
     Crown,
-    Shield,
 } from "lucide-react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -37,51 +35,29 @@ import {
     SidebarMenuSub,
     SidebarMenuSubItem,
     SidebarMenuSubButton,
-    SidebarRail,
 } from "@/components/ui/sidebar";
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { sidebarData } from "@/components/menu-items";
+import { useAuth } from "@/hooks/use-auth";
 
-
-export function AdminSidebar({ user, userRole, ...props }) {
+export function AdminSidebar(props) {
+    const { user, logout } = useAuth();
     const pathname = usePathname();
 
-    const handleSignOut = async () => {
-        await signOut({ callbackUrl: "/login" });
-    };
+    const isParentActive = (item) =>
+        item.isCollapsible && item.items
+            ? item.items.some((subItem) => pathname === subItem.url)
+            : pathname === item.url;
 
-    // Check if any sub-item is active
-    const isParentActive = (item) => {
-        if (item.isCollapsible && item.items) {
-            return item.items.some((subItem) => pathname === subItem.url);
-        }
-        return pathname === item.url;
-    };
-
-    // Check if collapsible should be open by default
-    const shouldBeOpen = (item) => {
-        if (item.isCollapsible && item.items) {
-            return item.items.some((subItem) => pathname === subItem.url);
-        }
-        return false;
-    };
-
-    const getRoleIcon = (role) => {
-        return role === "ADMIN" ? Crown : Shield;
-    };
-
-    const getRoleColor = (role) => {
-        return role === "ADMIN" ? "text-amber-600" : "text-blue-600";
-    };
+    const shouldBeOpen = (item) =>
+        item.isCollapsible && item.items
+            ? item.items.some((subItem) => pathname === subItem.url)
+            : false;
 
     return (
         <Sidebar variant="inset" className="border-r-0" {...props}>
-            {/* Enhanced Header */}
+            {/* Header */}
             <SidebarHeader className="border-b bg-gradient-to-r from-primary/5 to-primary/10">
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -90,7 +66,7 @@ export function AdminSidebar({ user, userRole, ...props }) {
                             asChild
                             className="hover:bg-primary/10 transition-all duration-200"
                         >
-                            <a href="/admin" className="nunito-text">
+                            <a href="/admin" className="nunito-text flex items-center gap-2">
                                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-md">
                                     <LayoutDashboard className="size-4" />
                                 </div>
@@ -99,15 +75,9 @@ export function AdminSidebar({ user, userRole, ...props }) {
                                         Admin Panel
                                     </span>
                                     <div className="flex items-center gap-1">
-                                        {React.createElement(getRoleIcon(userRole), {
-                                            className: `size-3 ${getRoleColor(userRole)}`,
-                                        })}
-                                        <span
-                                            className={`truncate text-xs font-medium capitalize ${getRoleColor(
-                                                userRole
-                                            )}`}
-                                        >
-                                            {userRole}
+                                        <Crown className="size-3 text-amber-600" />
+                                        <span className="truncate text-xs font-medium text-amber-600">
+                                            ADMIN
                                         </span>
                                     </div>
                                 </div>
@@ -117,95 +87,89 @@ export function AdminSidebar({ user, userRole, ...props }) {
                 </SidebarMenu>
             </SidebarHeader>
 
-            {/* Enhanced Content */}
+            {/* Content */}
             <SidebarContent className="px-2">
-                {sidebarData.navMain.map((section) => {
-
-
-                    return (
-                        <SidebarGroup key={section.title} className="py-2">
-                            <SidebarGroupLabel className="nunito-text text-xs font-bold text-muted-foreground/80 uppercase tracking-wider px-2 mb-2">
-                                {section.title}
-                            </SidebarGroupLabel>
-                            <SidebarGroupContent>
-                                <SidebarMenu className="space-y-1">
-                                    {section.items.map((item) => {
-                                        if (item.isCollapsible && item.items) {
-                                            return (
-                                                <Collapsible
-                                                    key={item.title}
-                                                    asChild
-                                                    defaultOpen={shouldBeOpen(item)}
-                                                    className="group/collapsible"
-                                                >
-                                                    <SidebarMenuItem>
-                                                        <CollapsibleTrigger asChild>
-                                                            <SidebarMenuButton
-                                                                tooltip={item.title}
-                                                                isActive={isParentActive(item)}
-                                                                className="nunito-text font-medium hover:bg-primary/10 hover:text-primary transition-all duration-200 group-data-[state=open]/collapsible:bg-primary/5 group-data-[state=open]/collapsible:text-primary rounded-lg"
-                                                            >
-                                                                <item.icon className="size-4" />
-                                                                <span>{item.title}</span>
-                                                                <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                                                            </SidebarMenuButton>
-                                                        </CollapsibleTrigger>
-                                                        <CollapsibleContent>
-                                                            <SidebarMenuSub className="ml-4 mt-1 space-y-1">
-                                                                {item.items.map((subItem) => (
-                                                                    <SidebarMenuSubItem key={subItem.title}>
-                                                                        <SidebarMenuSubButton
-                                                                            asChild
-                                                                            isActive={pathname === subItem.url}
-                                                                            className="nunito-text hover:bg-primary/10 hover:text-primary transition-all duration-200 rounded-md"
-                                                                        >
-                                                                            <a
-                                                                                href={subItem.url}
-                                                                                className="flex items-center gap-2"
-                                                                            >
-                                                                                <subItem.icon className="size-4" />
-                                                                                <span>{subItem.title}</span>
-                                                                            </a>
-                                                                        </SidebarMenuSubButton>
-                                                                    </SidebarMenuSubItem>
-                                                                ))}
-                                                            </SidebarMenuSub>
-                                                        </CollapsibleContent>
-                                                    </SidebarMenuItem>
-                                                </Collapsible>
-                                            );
-                                        }
-
-                                        // Regular menu item
+                {sidebarData.navMain.map((section) => (
+                    <SidebarGroup key={section.title} className="py-2">
+                        <SidebarGroupLabel className="nunito-text text-xs font-bold text-muted-foreground/80 uppercase tracking-wider px-2 mb-2">
+                            {section.title}
+                        </SidebarGroupLabel>
+                        <SidebarGroupContent>
+                            <SidebarMenu className="space-y-1">
+                                {section.items.map((item) => {
+                                    if (item.isCollapsible && item.items) {
                                         return (
-                                            <SidebarMenuItem key={item.title}>
-                                                <SidebarMenuButton
-                                                    asChild
-                                                    isActive={pathname === item.url}
-                                                    className="nunito-text font-medium hover:bg-primary/10 hover:text-primary transition-all duration-200 rounded-lg"
-                                                >
-                                                    <a href={item.url} className="flex items-center gap-2">
-                                                        <item.icon className="size-4" />
-                                                        <span>{item.title}</span>
-                                                    </a>
-                                                </SidebarMenuButton>
-                                                {item.badge && (
-                                                    <SidebarMenuBadge className="bg-primary/10 text-primary text-xs font-medium">
-                                                        {item.badge}
-                                                    </SidebarMenuBadge>
-                                                )}
-                                            </SidebarMenuItem>
+                                            <Collapsible
+                                                key={item.title}
+                                                asChild
+                                                defaultOpen={shouldBeOpen(item)}
+                                                className="group/collapsible"
+                                            >
+                                                <SidebarMenuItem>
+                                                    <CollapsibleTrigger asChild>
+                                                        <SidebarMenuButton
+                                                            tooltip={item.title}
+                                                            isActive={isParentActive(item)}
+                                                            className="nunito-text font-medium hover:bg-primary/10 hover:text-primary transition-all duration-200 group-data-[state=open]/collapsible:bg-primary/5 group-data-[state=open]/collapsible:text-primary rounded-lg"
+                                                        >
+                                                            <item.icon className="size-4" />
+                                                            <span>{item.title}</span>
+                                                            <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                        </SidebarMenuButton>
+                                                    </CollapsibleTrigger>
+                                                    <CollapsibleContent>
+                                                        <SidebarMenuSub className="ml-4 mt-1 space-y-1">
+                                                            {item.items.map((subItem) => (
+                                                                <SidebarMenuSubItem key={subItem.title}>
+                                                                    <SidebarMenuSubButton
+                                                                        asChild
+                                                                        isActive={pathname === subItem.url}
+                                                                        className="nunito-text hover:bg-primary/10 hover:text-primary transition-all duration-200 rounded-md"
+                                                                    >
+                                                                        <a
+                                                                            href={subItem.url}
+                                                                            className="flex items-center gap-2"
+                                                                        >
+                                                                            <subItem.icon className="size-4" />
+                                                                            <span>{subItem.title}</span>
+                                                                        </a>
+                                                                    </SidebarMenuSubButton>
+                                                                </SidebarMenuSubItem>
+                                                            ))}
+                                                        </SidebarMenuSub>
+                                                    </CollapsibleContent>
+                                                </SidebarMenuItem>
+                                            </Collapsible>
                                         );
-                                    })}
-                                </SidebarMenu>
+                                    }
 
-                            </SidebarGroupContent>
-                        </SidebarGroup>
-                    );
-                })}
+                                    return (
+                                        <SidebarMenuItem key={item.title}>
+                                            <SidebarMenuButton
+                                                asChild
+                                                isActive={pathname === item.url}
+                                                className="nunito-text font-medium hover:bg-primary/10 hover:text-primary transition-all duration-200 rounded-lg"
+                                            >
+                                                <a href={item.url} className="flex items-center gap-2">
+                                                    <item.icon className="size-4" />
+                                                    <span>{item.title}</span>
+                                                </a>
+                                            </SidebarMenuButton>
+                                            {item.badge && (
+                                                <SidebarMenuBadge className="bg-primary/10 text-primary text-xs font-medium">
+                                                    {item.badge}
+                                                </SidebarMenuBadge>
+                                            )}
+                                        </SidebarMenuItem>
+                                    );
+                                })}
+                            </SidebarMenu>
+                        </SidebarGroupContent>
+                    </SidebarGroup>
+                ))}
             </SidebarContent>
 
-            {/* Enhanced Footer */}
+            {/* Footer */}
             <SidebarFooter className="border-t bg-gradient-to-r from-muted/30 to-muted/50 p-2">
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -218,31 +182,23 @@ export function AdminSidebar({ user, userRole, ...props }) {
                                     <div className="relative">
                                         <Avatar className="h-8 w-8 rounded-lg border-2 border-primary/20">
                                             <AvatarImage
-                                                src={
-                                                    user?.user?.image ||
-                                                    "/placeholder.svg?height=32&width=32" ||
-                                                    "/placeholder.svg"
-                                                }
-                                                alt={user?.user?.name || "User"}
+                                                src={user?.image || "/placeholder.svg"}
+                                                alt={user?.name || "User"}
                                             />
                                             <AvatarFallback className="rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold">
-                                                {user?.user?.name?.charAt(0)?.toUpperCase() || "U"}
+                                                {user?.name?.charAt(0)?.toUpperCase() || "U"}
                                             </AvatarFallback>
                                         </Avatar>
                                         <div className="absolute -bottom-1 -right-1">
-                                            {React.createElement(getRoleIcon(userRole), {
-                                                className: `size-3 ${getRoleColor(
-                                                    userRole
-                                                )} bg-background rounded-full p-0.5`,
-                                            })}
+                                            <Crown className="size-3 text-amber-600 bg-background rounded-full p-0.5" />
                                         </div>
                                     </div>
                                     <div className="grid flex-1 text-left text-sm leading-tight">
                                         <span className="truncate font-semibold text-foreground">
-                                            {user?.user?.name || "User"}
+                                            {user?.name || "Admin"}
                                         </span>
                                         <span className="truncate text-xs text-muted-foreground">
-                                            {user?.user?.email || "user@example.com"}
+                                            {user?.email || "admin@example.com"}
                                         </span>
                                     </div>
                                     <ChevronDown className="ml-auto size-4 text-muted-foreground" />
@@ -255,16 +211,12 @@ export function AdminSidebar({ user, userRole, ...props }) {
                                 sideOffset={4}
                             >
                                 <div className="p-2 border-b">
-                                    <div className="flex items-center gap-2">
-                                        <Badge
-                                            variant="secondary"
-                                            className={`${getRoleColor(
-                                                userRole
-                                            )} bg-primary/10 font-medium`}
-                                        >
-                                            {userRole}
-                                        </Badge>
-                                    </div>
+                                    <Badge
+                                        variant="secondary"
+                                        className="text-amber-600 bg-primary/10 font-medium"
+                                    >
+                                        ADMIN
+                                    </Badge>
                                 </div>
                                 <DropdownMenuItem
                                     asChild
@@ -286,7 +238,7 @@ export function AdminSidebar({ user, userRole, ...props }) {
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                    onClick={handleSignOut}
+                                    onClick={logout}
                                     className="text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
                                 >
                                     <LogOut className="size-4" />
@@ -297,7 +249,6 @@ export function AdminSidebar({ user, userRole, ...props }) {
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>
-            <SidebarRail />
         </Sidebar>
     );
 }
