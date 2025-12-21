@@ -11,6 +11,8 @@ import {
 export interface UserData {
   isAnonymous: boolean;
   isOnboarded: boolean;
+  name: string;
+  email: string;
   role: string;
   provider?: string;
 }
@@ -20,6 +22,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   logout: () => void;
+  refreshAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,37 +30,43 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   isLoading: true,
   logout: () => {},
+  refreshAuth: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch("/api/v1/auth/me", {
-          method: "GET",
-          credentials: "include",
-        });
+  const fetchUser = async () => {
+    try {
+      const res = await fetch("/api/v1/auth/me", {
+        method: "GET",
+        credentials: "include",
+      });
 
-        if (!res.ok) throw new Error("Not authenticated");
+      if (!res.ok) throw new Error("Not authenticated");
 
-        const data = await res.json();
-        if (data.success) {
-          setUser(data.data.user);
-        } else {
-          setUser(null);
-        }
-      } catch {
+      const data = await res.json();
+      if (data.success) {
+        setUser(data.data.user);
+      } else {
         setUser(null);
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch {
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchUser();
   }, []);
+
+  const refreshAuth = async () => {
+    setIsLoading(true);
+    await fetchUser();
+  };
 
   const logout = async () => {
     try {
@@ -83,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         logout,
+        refreshAuth,
       }}
     >
       {children}

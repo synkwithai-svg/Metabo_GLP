@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 export async function GET(req) {
     try {
         const userId = req.headers.get("x-user-id");
-        // const deviceId = req.headers.get("x-device-id") || null;
 
         if (!userId) {
             return NextResponse.json(
@@ -13,17 +12,60 @@ export async function GET(req) {
             );
         }
 
-        const apiKeys = await db.apiKey.findMany({});
+        // ✅ Read query params
+        const { searchParams } = new URL(req.url);
+
+        const page = Number(searchParams.get("page")) || 1;
+        const limit = Number(searchParams.get("limit")) || 10;
+
+        // This should match `searchKey` from frontend
+        // example: ?name=abc OR ?key=abc
+        const searchValue =
+            searchParams.get("name") ||
+            searchParams.get("key") ||
+            searchParams.get("search") ||
+            "";
+
+        const skip = (page - 1) * limit;
+
+        // ✅ Search condition (adjust field names as per your schema)
+        const where = searchValue
+            ? {
+                OR: [
+                    { name: { contains: searchValue, mode: "insensitive" } },
+                    { key: { contains: searchValue, mode: "insensitive" } },
+                ],
+            }
+            : {};
+
+        // ✅ Query data
+        const [apiKeys, total] = await Promise.all([
+            db.apiKey.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: "desc" },
+            }),
+            db.apiKey.count({ where }),
+        ]);
+
+        const totalPages = Math.ceil(total / limit);
 
         return NextResponse.json({
             success: true,
             message: "API Keys retrieved",
-            apiKeys,
+            data: apiKeys,
+            meta: {
+                page,
+                limit,
+                total,
+                totalPages,
+            },
         });
     } catch (error) {
         console.error("API KEY GET ERROR:", error);
         return NextResponse.json(
-            { error: "Internal server error" },
+            { success: false, message: "Internal server error" },
             { status: 500 }
         );
     }
@@ -100,7 +142,6 @@ export async function POST(req) {
 export async function DELETE(req) {
     try {
         const userId = req.headers.get("x-user-id");
-        // const deviceId = req.headers.get("x-device-id") || null;
 
         if (!userId) {
             return NextResponse.json(
@@ -109,19 +150,23 @@ export async function DELETE(req) {
             );
         }
 
-        const body = await req.json();
-        const { key, id } = body;
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get("id");
+        const key = searchParams.get("key");
 
-        if (!key && !id) {
+        if (!id && !key) {
             return NextResponse.json(
-                { success: false, message: "Provide either key or id" },
+                { success: false, message: "Provide either id or key" },
                 { status: 400 }
             );
         }
 
         const apiKey = await db.apiKey.findFirst({
             where: {
-                OR: [{ key: key || undefined }, { id: id || undefined }],
+                OR: [
+                    id ? { id } : undefined,
+                    key ? { key } : undefined,
+                ].filter(Boolean),
             },
         });
 
@@ -132,15 +177,13 @@ export async function DELETE(req) {
             );
         }
 
-        // Delete API key
-        const deletedApiKey = await db.apiKey.delete({
+        await db.apiKey.delete({
             where: { id: apiKey.id },
         });
 
         return NextResponse.json({
             success: true,
-            message: "API Key deleted",
-            apiKey: deletedApiKey,
+            message: "API Key deleted successfully",
         });
     } catch (error) {
         console.error("API KEY DELETE ERROR:", error);

@@ -35,6 +35,7 @@ export async function GET(req) {
             select: {
                 id: true,
                 email: true,
+                name: true,
                 role: true,
                 isAnonymous: true,
                 isOnboarded: true,
