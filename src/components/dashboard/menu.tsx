@@ -15,6 +15,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/use-auth";
 
 interface MenuProps {
   isOpen: boolean | undefined;
@@ -23,6 +24,7 @@ interface MenuProps {
 export function Menu({ isOpen }: MenuProps) {
   const pathname = usePathname();
   const menuList = getMenuList(pathname);
+  const {logout } = useAuth();
 
   return (
     <ScrollArea className="[&>div>div[style]]:!block">
@@ -110,6 +112,7 @@ export function Menu({ isOpen }: MenuProps) {
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
+                    onClick={logout}
                     className="w-full justify-center h-10 mt-5"
                   >
                     <LogOut size={18} />
