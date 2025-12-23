@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getOpenAIClient } from "@/lib/getOpenAIKey";
+import { createChatCompletion } from "@/lib/getOpenAIKey";
 import { getMetaboSystemPrompt } from "@/lib/metaboSystemPrompt";
 
 export async function POST(req) {
     try {
-        // 1. AUTH / USER VALIDATION
+        // 1. AUTH
         const userId = req.headers.get("x-user-id");
         if (!userId) {
             return NextResponse.json(
@@ -24,7 +24,7 @@ export async function POST(req) {
             );
         }
 
-        // 2. GET ACTIVE SUBSCRIPTION
+        // 2. ACTIVE SUBSCRIPTION
         const activeSubscription = await db.subscription.findFirst({
             where: {
                 userId,
@@ -34,8 +34,8 @@ export async function POST(req) {
             orderBy: { createdAt: "desc" },
         });
 
-        // 3. TOKEN LIMIT CHECK
-        let tokenCountRecord = await db.tokenCount.findFirst({
+        // 3. TOKEN LIMIT CHECK (APP LEVEL)
+        const tokenCountRecord = await db.tokenCount.findFirst({
             where: {
                 userId,
                 subscriptionId: activeSubscription?.id || null,
@@ -49,19 +49,19 @@ export async function POST(req) {
             tokenCountRecord.count >= tokenCountRecord.limit
         ) {
             return NextResponse.json(
-                {
-                    success: false,
-                    message: "Token limit exceeded for this subscription",
-                },
+                { success: false, message: "Token limit exceeded" },
                 { status: 403 }
             );
         }
 
-        // 4. GET OR CREATE CHAT SESSION
-        let chatSession = sessionId
+        // 4. CHAT SESSION
+        const chatSession = sessionId
             ? await db.chatSession.findUnique({ where: { id: sessionId } })
             : await db.chatSession.create({
-                data: { userId, subscriptionId: activeSubscription?.id || null },
+                data: {
+                    userId,
+                    subscriptionId: activeSubscription?.id || null,
+                },
             });
 
         if (!chatSession) {
@@ -73,10 +73,14 @@ export async function POST(req) {
 
         // 5. SAVE USER MESSAGE
         await db.chatMessage.create({
-            data: { sessionId: chatSession.id, isUser: true, content: message },
+            data: {
+                sessionId: chatSession.id,
+                isUser: true,
+                content: message,
+            },
         });
 
-        // 6. LOAD USER DATA FOR CONTEXT
+        // 6. LOAD USER CONTEXT
         const userData = await db.user.findUnique({
             where: { id: userId },
             include: {
@@ -101,35 +105,31 @@ export async function POST(req) {
             },
         });
 
-        // 7. LOAD PREVIOUS MESSAGES
+        // 7. LOAD HISTORY
         const previousMessages = await db.chatMessage.findMany({
             where: { sessionId: chatSession.id },
             orderBy: { createdAt: "asc" },
         });
 
-        const conversationHistory = previousMessages.map((msg) => ({
-            role: msg.isUser ? "user" : "assistant",
-            content: msg.content,
-        }));
+        const messages = [
+            {
+                role: "system",
+                content: getMetaboSystemPrompt(userData),
+            },
+            ...previousMessages.map((m) => ({
+                role: m.isUser ? "user" : "assistant",
+                content: m.content,
+            })),
+            { role: "user", content: message },
+        ];
 
-        // 8. SYSTEM PROMPT (imported)
-        const systemPrompt = getMetaboSystemPrompt(userData);
-
-        // 9. OPENAI CALL
-        const openai = await getOpenAIClient();
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                ...conversationHistory,
-                { role: "user", content: message },
-            ],
-        });
+        // 8. OPENAI (SAFE)
+        const completion = await createChatCompletion({ messages });
 
         const aiMessage = completion.choices[0].message?.content || "";
         const tokensUsed = completion.usage?.total_tokens || 0;
 
-        // 10. SAVE AI MESSAGE
+        // 9. SAVE AI MESSAGE
         await db.chatMessage.create({
             data: {
                 sessionId: chatSession.id,
@@ -139,7 +139,7 @@ export async function POST(req) {
             },
         });
 
-        // 11. UPDATE TOKEN COUNT
+        // 10. UPDATE TOKEN COUNT
         if (tokenCountRecord) {
             await db.tokenCount.update({
                 where: { id: tokenCountRecord.id },
@@ -156,7 +156,6 @@ export async function POST(req) {
             });
         }
 
-        // 12. RESPONSE
         return NextResponse.json({
             success: true,
             sessionId: chatSession.id,
@@ -164,9 +163,15 @@ export async function POST(req) {
             tokensUsed,
         });
     } catch (err) {
-        console.error(err);
+        console.error("AI Coach Error:", err);
+
         return NextResponse.json(
-            { success: false, message: err.message || "Server error" },
+            {
+                success: false,
+                message:
+                    err?.message ||
+                    "AI service temporarily unavailable",
+            },
             { status: 500 }
         );
     }

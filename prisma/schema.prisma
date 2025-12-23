@@ -896,6 +896,8 @@ model ApiKey {
   tokens    Int?
   expiresAt DateTime?
 
+  isDisabled Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
