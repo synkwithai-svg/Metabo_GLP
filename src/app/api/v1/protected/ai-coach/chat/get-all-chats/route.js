@@ -27,7 +27,6 @@
 // }
 
 
-
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -46,31 +45,27 @@ export async function GET(req) {
             orderBy: { updatedAt: "desc" },
             include: {
                 messages: {
-                    take: 2, // 👈 get last user + last AI
                     orderBy: { createdAt: "desc" },
+                    take: 10, // safety
                 },
             },
         });
 
-        const formattedSessions = sessions.map((session) => {
-            const userMessage = session.messages.find((m) => m.isUser);
-            const aiMessage = session.messages.find((m) => !m.isUser);
+        const formatted = sessions.map((s) => {
+            const lastUser = s.messages.find((m) => m.isUser);
+            const lastAI = s.messages.find((m) => !m.isUser);
 
             return {
-                sessionId: session.id,
-                title: session.title,
-                tokensUsed: session.tokensUsed,
-                updatedAt: session.updatedAt,
-
-                req: userMessage?.content || null,
-                res: aiMessage?.content || null,
+                sessionId: s.id,
+                title: s.title,
+                tokensUsed: s.tokensUsed,
+                updatedAt: s.updatedAt,
+                req: lastUser?.content ?? null,
+                res: lastAI?.content ?? null,
             };
         });
 
-        return NextResponse.json({
-            success: true,
-            sessions: formattedSessions,
-        });
+        return NextResponse.json({ success: true, sessions: formatted });
     } catch (err) {
         console.error(err);
         return NextResponse.json(

@@ -5,7 +5,6 @@ import { getMetaboSystemPrompt } from "@/lib/metaboSystemPrompt";
 
 export async function POST(req) {
     try {
-        // 1. AUTH
         const userId = req.headers.get("x-user-id");
         if (!userId) {
             return NextResponse.json(
@@ -14,9 +13,7 @@ export async function POST(req) {
             );
         }
 
-        const body = await req.json();
-        const { message, sessionId, deviceId } = body;
-
+        const { message, sessionId, deviceId } = await req.json();
         if (!message) {
             return NextResponse.json(
                 { success: false, message: "Message is required" },
@@ -24,7 +21,7 @@ export async function POST(req) {
             );
         }
 
-        // 2. ACTIVE SUBSCRIPTION
+        /* 1️⃣ Subscription */
         const activeSubscription = await db.subscription.findFirst({
             where: {
                 userId,
@@ -34,44 +31,25 @@ export async function POST(req) {
             orderBy: { createdAt: "desc" },
         });
 
-        // 3. TOKEN LIMIT CHECK (APP LEVEL)
-        const tokenCountRecord = await db.tokenCount.findFirst({
-            where: {
-                userId,
-                subscriptionId: activeSubscription?.id || null,
-                deviceId: deviceId || null,
-            },
-        });
-
-        if (
-            tokenCountRecord &&
-            tokenCountRecord.limit !== null &&
-            tokenCountRecord.count >= tokenCountRecord.limit
-        ) {
-            return NextResponse.json(
-                { success: false, message: "Token limit exceeded" },
-                { status: 403 }
-            );
-        }
-
-        // 4. CHAT SESSION
-        const chatSession = sessionId
-            ? await db.chatSession.findUnique({ where: { id: sessionId } })
-            : await db.chatSession.create({
-                data: {
-                    userId,
-                    subscriptionId: activeSubscription?.id || null,
-                },
-            });
+        /* 2️⃣ Session */
+        const chatSession =
+            sessionId
+                ? await db.chatSession.findFirst({ where: { id: sessionId, userId } })
+                : await db.chatSession.create({
+                    data: {
+                        userId,
+                        subscriptionId: activeSubscription?.id || null,
+                    },
+                });
 
         if (!chatSession) {
             return NextResponse.json(
-                { success: false, message: "Invalid session ID" },
+                { success: false, message: "Invalid session" },
                 { status: 404 }
             );
         }
 
-        // 5. SAVE USER MESSAGE
+        /* 3️⃣ Save USER message */
         await db.chatMessage.create({
             data: {
                 sessionId: chatSession.id,
@@ -80,56 +58,37 @@ export async function POST(req) {
             },
         });
 
-        // 6. LOAD USER CONTEXT
-        const userData = await db.user.findUnique({
-            where: { id: userId },
-            include: {
-                meals: { include: { foods: true } },
-                userFoods: true,
-                quickAdds: true,
-                foodLogs: { include: { items: true } },
-                waterLogs: { include: { consumedWaters: true } },
-                weightlogs: true,
-                sideEffects: true,
-                sideEffectLogs: true,
-                walkingStepsLogs: true,
-                dashboards: true,
-                heights: true,
-                photos: true,
-                medications: true,
-                injectionLogs: true,
-                nextInjectionShots: true,
-                treatments: true,
-                injectionShots: true,
-                coachConfig: true,
-            },
-        });
-
-        // 7. LOAD HISTORY
-        const previousMessages = await db.chatMessage.findMany({
+        /* 4️⃣ Load history (NO DUPLICATION) */
+        const history = await db.chatMessage.findMany({
             where: { sessionId: chatSession.id },
             orderBy: { createdAt: "asc" },
         });
 
-        const messages = [
+        const userData = await db.user.findUnique({
+            where: { id: userId },
+            include: { coachConfig: true },
+        });
+
+        const openAIMessages = [
             {
                 role: "system",
                 content: getMetaboSystemPrompt(userData),
             },
-            ...previousMessages.map((m) => ({
+            ...history.map((m) => ({
                 role: m.isUser ? "user" : "assistant",
                 content: m.content,
             })),
-            { role: "user", content: message },
         ];
 
-        // 8. OPENAI (SAFE)
-        const completion = await createChatCompletion({ messages });
+        /* 5️⃣ OpenAI */
+        const completion = await createChatCompletion({
+            messages: openAIMessages,
+        });
 
-        const aiMessage = completion.choices[0].message?.content || "";
-        const tokensUsed = completion.usage?.total_tokens || 0;
+        const aiMessage = completion.choices[0]?.message?.content ?? "";
+        const tokensUsed = completion.usage?.total_tokens ?? 0;
 
-        // 9. SAVE AI MESSAGE
+        /* 6️⃣ Save AI message */
         await db.chatMessage.create({
             data: {
                 sessionId: chatSession.id,
@@ -139,22 +98,14 @@ export async function POST(req) {
             },
         });
 
-        // 10. UPDATE TOKEN COUNT
-        if (tokenCountRecord) {
-            await db.tokenCount.update({
-                where: { id: tokenCountRecord.id },
-                data: { count: { increment: tokensUsed } },
-            });
-        } else {
-            await db.tokenCount.create({
-                data: {
-                    userId,
-                    subscriptionId: activeSubscription?.id || null,
-                    deviceId: deviceId || null,
-                    count: tokensUsed,
-                },
-            });
-        }
+        /* 7️⃣ Update session timestamp & tokens */
+        await db.chatSession.update({
+            where: { id: chatSession.id },
+            data: {
+                tokensUsed: { increment: tokensUsed },
+                updatedAt: new Date(),
+            },
+        });
 
         return NextResponse.json({
             success: true,
@@ -164,14 +115,8 @@ export async function POST(req) {
         });
     } catch (err) {
         console.error("AI Coach Error:", err);
-
         return NextResponse.json(
-            {
-                success: false,
-                message:
-                    err?.message ||
-                    "AI service temporarily unavailable",
-            },
+            { success: false, message: err.message || "AI error" },
             { status: 500 }
         );
     }
